@@ -1,7 +1,5 @@
 import storage from 'node-persist';
 
-storage.initSync({
-  dir: './../persist',
-});
+storage.initSync();
 
 export default storage;
