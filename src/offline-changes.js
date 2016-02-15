@@ -1,5 +1,6 @@
 import childProcess from 'child_process';
 import Bacon from 'baconjs';
+import File, { ACTIONS } from './file.js';
 let debug = require('debug')('bean');
 
 export function changesSince(directory, timestampInMsec = 0) {
@@ -24,15 +25,19 @@ export function allFiles(directory) {
 
 function _processSpawn(cmd) {
 
-  let results = Bacon.fromEvent(cmd.stdout, 'data')
+  let results = Bacon
+    .fromEvent(cmd.stdout, 'data')
     .map(raw => String(raw))
     .flatMap(founds => Bacon.fromArray(founds.split('\n')))
-    .filter(value => value.trim());
+    .filter(value => value.trim())
+    .map(path => { return new File({path: path, action: ACTIONS.UNKNOWN})})
 
-  let errors = Bacon.fromEvent(cmd.stderr, 'data')
-      .map(raw => new Bacon.Error(String(raw)));
+  let errors = Bacon
+    .fromEvent(cmd.stderr, 'data')
+    .map(raw => new Bacon.Error(String(raw)));
 
-  let done = Bacon.fromEvent(cmd.stdout, 'close')
+  let done = Bacon
+    .fromEvent(cmd.stdout, 'close')
     .map(code => new Bacon.End()); //todo
 
   return results;

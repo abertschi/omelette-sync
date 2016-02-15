@@ -1,20 +1,11 @@
 import chokidar from 'chokidar';
-import getGoogleAuth from './google-auth.js';
-import google from 'googleapis';
 import fs from 'fs';
-import dirsum from 'dirsum';
-import storage from './storage';
-
 import { changesSince, allFiles } from './offline-changes.js';
-import Emitter from './emitter.js';
-import FileChangeQueue from './file-change-queue.js';
-import Upload from './upload.js';
 import watchDirectory from './online-changes.js';
 import Bacon from 'baconjs';
 let debug = require('debug')('bean:scanner');
 import db from './db.js';
-
-const GOOGLE_CLIENT_SECRET = './../client_secret.json';
+import File, { ACTIONS } from './file.js';
 
 export default class FileScanner {
 
@@ -38,30 +29,18 @@ export default class FileScanner {
         });
   }
 
-  _convertOfflineFiles(stream) {
-    return stream.map(f => {
-        return {path: f};
-      });
-  }
 
   _createInitStream() {
     debug('Creating index of all files in directory %s', this.directory);
 
-    return this._addFileStats(this._convertOfflineFiles(allFiles(this.directory)))
-      .map(file => {
-        file.action = 'unknown'; // possible: create file/ dir or moved
-        return file;
-      });
+    return this._addFileStats(allFiles(this.directory));
   }
 
   _createSinceStream() {
     debug('Updating index since lastrun date %s', this.since);
 
-    return this._addFileStats(this._convertOfflineFiles(changesSince(this.directory, this.since)))
-      .map(file => {
-        file.action = 'unknown';
-        return file;
-      });
+    return this._addFileStats(changesSince(this.directory, this.since));
+
     // returns directory name if something inside directorh (not recursive) or
     // directory itself was changed
     // in case or rename -> file id is the same
@@ -76,7 +55,7 @@ export default class FileScanner {
   _createOnlineStream() {
     debug('Watching directory for %s changes', this.directory);
 
-    const REMOVED = ['unlink', 'unlinkDir'];
+    const REMOVED = [ACTIONS.UNLINK, ACTIONS.UNLINK_DIR];
     const isRemoved = (file) => { return REMOVED.indexOf(file.action) != -1 };
 
     let stream = watchDirectory(this.directory);
@@ -91,7 +70,7 @@ export default class FileScanner {
     return stream
       .doAction(file =>{
       Bacon.fromCallback(db, 'run', QUERY, [file.id, file.path])
-        .onValue((nothing) => nothing);
+        .onValue((nothing) => nothing); // call onValue to get response
       });
   }
 
@@ -127,7 +106,7 @@ export default class FileScanner {
     let offlineChanges = this.init ? this._createInitStream() : this._createSinceStream();
     let onlineChanges = this._createOnlineStream();
 
-    const MOVE_ACTIONS = ['add', 'addDir', 'change'];
+    const MOVE_ACTIONS = [ACTIONS.ADD, ACTIONS.ADD_DIR, ACTIONS.CHANGE ];
     const isMoved = (file) => { return MOVE_ACTIONS.indexOf(file.action) != -1 };
 
     let movedStream = onlineChanges
