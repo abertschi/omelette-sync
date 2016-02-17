@@ -1,5 +1,5 @@
 
-export default class File {
+export default class Change {
 
   constructor(parm = {}) {
     this.id = parm.id || '';
@@ -18,5 +18,6 @@ export const ACTIONS = {
     UNLINK: 'unlink',
     UNLINK_DIR: 'unlinkDir',
     CHANGE: 'change',
-    UNKNOWN: 'unknown'
+    UNKNOWN: 'unknown',
+    MOVED: 'moved'
 };

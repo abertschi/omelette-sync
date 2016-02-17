@@ -2,35 +2,44 @@ import childProcess from 'child_process';
 import Bacon from 'baconjs';
 import File, { ACTIONS } from './file.js';
 let debug = require('debug')('bean');
+var path = require('path');
 
-export function changesSince(directory, timestampInMsec = 0) {
+export function getFileChangesSince(directory, timestampInMsec = 0) {
 
   if (!timestampInMsec) {
     debug('changesSince with since=0 called');
-    return new Bacon.End();
+    return new Bacon.Never();
   }
 
-  let deltaTime = new Date().getTime() - timestampInMsec;
-  deltaTime = Math.round(deltaTime / 1000 * -1); // in seconds, negative for find argument
+  let script = __dirname + '/find-changes-since.sh';
+  let ctime = new Date().getTime() - timestampInMsec;
+  ctime = Math.round(ctime / 1000 * -1);
 
-  debug(`find ${directory} -ctime ${deltaTime}s`);
-  const find = childProcess.spawn('find', [directory, '-ctime', deltaTime + 's']);
-  return _processSpawn(find);
+  const find = childProcess.spawn('sh', ['./file-changes-since.sh']);
+  return processSpawn(find);
 }
 
-export function allFiles(directory) {
-    debug(`find ${directory}`);
-    return _processSpawn(childProcess.spawn('find', [directory]));
+export function getAllFiles(directory) {
+    let script = __dirname + '/watcher/find-all-changes2.sh';
+    const find = childProcess.spawn('sh', [script, directory]);
+
+    return processSpawn(find);
+    // return new Bacon.once(new File());
 }
 
-function _processSpawn(cmd) {
+function processSpawn(cmd) {
 
   let results = Bacon
     .fromEvent(cmd.stdout, 'data')
     .map(raw => String(raw))
     .flatMap(founds => Bacon.fromArray(founds.split('\n')))
-    .filter(value => value.trim())
-    .map(path => { return new File({path: path, action: ACTIONS.UNKNOWN})})
+    .map(output => {
+      const SEP_INDEX = output.indexOf(' ') + 1;
+      let id = output.substring(0, SEP_INDEX);
+      let path = output.substring(SEP_INDEX)
+      let isDir = (path[path.length -1] === '/');
+
+      return new File({path: path, action: ACTIONS.UNKNOWN, id: id})});
 
   let errors = Bacon
     .fromEvent(cmd.stderr, 'data')
@@ -38,7 +47,7 @@ function _processSpawn(cmd) {
 
   let done = Bacon
     .fromEvent(cmd.stdout, 'close')
-    .map(code => new Bacon.End()); //todo
+    .map(code => new Bacon.Never()); //todo
 
   return results;
 }

@@ -22,7 +22,7 @@ console.log(date);
 console.log(date.getTime());
 
 let scanner = new FileScanner({
-  directory: '/Users/abertschi/beandata/encryption-nodejs/tmp',
+  directory: '/Users/abertschi/Dropbox',
   since: date.getTime(),
   init: true});
 
@@ -35,7 +35,7 @@ process.on('SIGINT', function() {
 });
 
 
-scanner.watch();
+scanner.watch(); 
 
 let timeout = {};
   clearTimeout(timeout);

@@ -1,11 +1,15 @@
 import chokidar from 'chokidar';
 import fs from 'fs';
-import { changesSince, allFiles } from './offline-changes.js';
+import { getFileChangesSince, getAllFiles } from './offline-changes.js';
 import watchDirectory from './online-changes.js';
 import Bacon from 'baconjs';
 let debug = require('debug')('bean:scanner');
 import db from './db.js';
 import File, { ACTIONS } from './file.js';
+
+import getFileStats from './get-file-stats.js';
+import detectIfFileWasMoved from './detect-if-file-was-moved.js';
+import addFileToIndex from './add-file-to-index.js';
 
 export default class FileScanner {
 
@@ -16,30 +20,28 @@ export default class FileScanner {
   }
 
   _addFileStats(stream) {
-    return stream
-      .flatMap(file => { // combine filepath with fileId using _getFileId
-        return Bacon.fromBinder(sink => {
-          this._getFileStats(file.path)
-            .onValue(metadata => {
-              file.id = metadata.id;
-              file.isDir = metadata.isDir;
-              sink(file);
-            });
-          });
-        });
+    return stream;
+      // .flatMap(file => {
+      //   return getFileStats(file.path)
+      //     .flatMap(stats => {
+      //       file.id = stats.id;
+      //       file.isDir = stats.isDir;
+      //       return file;
+      //     });
+      // });
   }
 
 
   _createInitStream() {
     debug('Creating index of all files in directory %s', this.directory);
 
-    return this._addFileStats(allFiles(this.directory));
+    return this._addFileStats(getAllFiles(this.directory));
   }
 
   _createSinceStream() {
     debug('Updating index since lastrun date %s', this.since);
 
-    return this._addFileStats(changesSince(this.directory, this.since));
+    return this._addFileStats(getFileChangesSince(this.directory, this.since));
 
     // returns directory name if something inside directorh (not recursive) or
     // directory itself was changed
@@ -66,40 +68,25 @@ export default class FileScanner {
   }
 
   _index(stream) {
-    const QUERY = 'INSERT INTO DIRECTORY_INDEX(file_id, path) VALUES (?, ?)';
-    return stream
-      .doAction(file =>{
-      Bacon.fromCallback(db, 'run', QUERY, [file.id, file.path])
-        .onValue((nothing) => nothing); // call onValue to get response
-      });
+    return stream;
+      // .flatMap(file => {
+      //   return addFileToIndex(file)
+      //     .flatMap(() => file);
+      //   });
   }
 
   _detectFileMoved(stream) {
-    const QUERY = 'SELECT path from DIRECTORY_INDEX where file_id=?';
-
-    return stream.flatMap(file => {
-        return Bacon.fromBinder(sink => {
-          Bacon.fromCallback(db, 'get', QUERY, [file.id])
-            .onValue((err, row) => {
-              //debug(err, row);
-              if (row && !err) { // TODO: bug, row is always null
-                file.action = 'moved';
-                file.pathFrom = row.path;
-              }
-              sink(file);
-            });
-          });
-        });
-  }
-
-  _getFileStats(path) {
-    return Bacon.fromNodeCallback(fs.stat, path)
-      .map(stats => {
-        return {
-          id: stats.ino,
-          isDir: stats.isDirectory()
-        };
-      });
+    return stream;
+    // .flatMap(file => {
+    //   return detectIfFileWasMoved(file.id, db)
+    //     .flatMap(moved => {
+    //       if (moved.wasMoved) {
+    //         file.action = ACTIONS.MOVED;
+    //         file.pathOrign = moved.pathOrigin;
+    //       }
+    //       return file;
+    //     });
+    // });
   }
 
   watch() {
