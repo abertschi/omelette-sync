@@ -49,21 +49,30 @@ while [[ true ]] ; do
 
   CHANGES=`find "${HOME_DIR}" -newer "${TIMESTAMP_FILE}"`
 
-  if [[ "${CHANGES}" ]] ; then
-    # if [[ ${OSTYPE} =~ ^darwin ]]; then
-    #   CHANGES=`stat ${CHANGES}`
-    # else
-    #   CHANGES=`ls --full-time ${CHANGES}`
-    # fi
+  IFS=$'\n' read -rd '' -a CHANGES_ARRAY <<<"${CHANGES}"
 
-    CHANGES_META=`ls -dilaT ${CHANGES}`
+  if [[ "${CHANGES}" ]] ; then
+    CHANGES_META=""
+    for CHANGE in "${CHANGES_ARRAY[@]}"
+    do
+
+      if [[ ${OSTYPE} =~ ^darwin ]]; then
+        CMD=`ls -dilaT "${CHANGE}"`
+        CHANGES_META="${CMD} ${CHANGES_META}"
+      else
+        CMD=`ls --full-time "${CHANGE}"`
+        CHANGES_META="${CMD} ${CHANGES_META}"
+      fi
+    done
+
+    #CHANGES_META=`ls -dilaT "${CHANGES}"`
 
     # echo "changesMeta: ${CHANGES}"
     # echo "changesMeta: ${CHANGES_META}"
 
     if [[ "${CHANGES_META}" != "${LAST_CHANGES}" ]] ; then
 
-      IFS=$'\n' read -rd '' -a CHANGES_ARRAY <<<"${CHANGES}"
+      #IFS=$'\n' read -rd '' -a CHANGES_ARRAY <<<"${CHANGES}"
       IFS=$'\n' read -rd '' -a CHANGES_META_ARRAY <<<"${CHANGES_META}"
       IFS=$'\n' read -rd '' -a LAST_CHANGES_ARRAY <<<"${LAST_CHANGES}"
 
@@ -91,5 +100,6 @@ while [[ true ]] ; do
 
   LAST_CHANGES="${CHANGES_META}"
   sleep ${INTERVAL_SECS}
+  #echo "new interation"
 
 done

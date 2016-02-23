@@ -1,19 +1,20 @@
 import childProcess from 'child_process';
 import Bacon from 'baconjs';
-import File, { ACTIONS } from './file.js';
-let debug = require('debug')('bean');
+let debug = require('debug')('bean:watcher');
 var path = require('path');
 
 export default class ShellScanner {
 
-  constructor(directory) {
-    this.directory = directory;
+  constructor(options) {
+    this.directory = options.directory;
     this.watchSpawn = null;
+    this.interval = options.interval | 1;
+    this.lookback = options.lookback | 120;
   }
 
   watch() {
     const SCRIPT = __dirname + '/watch-directory.sh';
-    this.watchSpawn = childProcess.spawn('sh', [SCRIPT, this.directory]);
+    this.watchSpawn = childProcess.spawn('sh', [SCRIPT, this.directory, this.interval, this.lookback]);
     return this._processOutput(this.watchSpawn);
   }
 
@@ -26,25 +27,50 @@ export default class ShellScanner {
 
   _processOutput(cmd) {
 
-  let results = Bacon
-    .fromEvent(cmd.stdout, 'data')
-    .map(raw => String(raw))
-    .flatMap(founds => Bacon.fromArray(founds.split('\n')))
-    .map(output => {
+    let results = Bacon
+      .fromEvent(cmd.stdout, 'data')
+      .map(raw => String(raw))
+      .flatMap(founds => Bacon.fromArray(founds.split('\n')))
+      .filter(f => f.trim() != '')
+      .map(output => {
 
-      return {
+        const ID_END = output.indexOf(' ');
+        let id = output.substring(0, ID_END);
 
-      };
+        let isDir = (output.substring(ID_END + 1, ID_END + 2) == 'd');
 
-    });
+        const PATH_STRT = id.length + 3;
+        let path = output.substring(PATH_STRT);
 
-  let errors = Bacon
-    .fromEvent(cmd.stderr, 'data')
-    .map(raw => new Bacon.Error(String(raw)));
+        debug(path, id, isDir);
+        return {
+          id: id,
+          isDir: isDir,
+          path: path
+        };
 
-  let done = Bacon
-    .fromEvent(cmd.stdout, 'close')
-    .map(code => new Bacon.Never()); //todo
+      });
 
-  return results.merge(errors).merge(done);
+      let bus = new Bacon.Bus();
+
+      let end = Bacon
+        .fromEvent(cmd.stdout, 'close')
+        .doAction(code => {
+          bus.end()
+        });
+
+        let errors = Bacon
+          .fromEvent(cmd.stderr, 'data')
+          .map(raw => String(raw))
+          .flatMap(founds => Bacon.fromArray(founds.split('\n')))
+          .filter(f => f.trim() != '');
+
+
+      results.concat(end).merge(errors)
+        .onValue(v => {
+          bus.push(v)
+        });
+
+      return bus;
+  }
 }

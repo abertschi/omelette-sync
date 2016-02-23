@@ -1,26 +1,21 @@
 import childProcess from 'child_process';
 import Bacon from 'baconjs';
-import File, { ACTIONS } from './file.js';
-let debug = require('debug')('bean');
+import getFileStats from './../get-file-stats.js';
+let debug = require('debug')('bean:watcher');
 var path = require('path');
+
 
 export default class FsWatchWatcher {
 
-  constructor(directory) {
-    this.directory = directory;
+  constructor(options = {}) {
+    this.directory = options.directory;
     this.watchSpawn = null;
   }
 
   watch() {
+    const SCRIPT = __dirname + '/fswatch-watcher.sh';
+    this.watchSpawn = childProcess.spawn('sh', [SCRIPT, this.directory]);
 
-    // fswatch /Users/abertschi/ -x --event-flag-separator "#"
-
-    // detect if file was removed by checked if file was moved to .Trash folder
-
-    let dir = '/';
-    const ARGS = [dir, '-x', '--event-flag-separator "#"'];
-
-    this.watchSpawn = childProcess.spawn('fswatch', [ARGS]);
     return this._processOutput(this.watchSpawn);
   }
 
@@ -33,30 +28,52 @@ export default class FsWatchWatcher {
 
   _processOutput(cmd) {
 
-  const ACTIONS = ['Created', 'Updated', 'Renamed']
+    let isTrash = (raw) => {
+      return raw.indexOf(TRASH) > -1 ? true : false;
+    }
 
-  let results = Bacon
-    .fromEvent(cmd.stdout, 'data')
-    .flatMap(founds => Bacon.fromArray(founds.split('\n')))
-    .map(raw => String(raw))
-    .map(output => {
-      const PATH_SEPARATOR = output.lastIndexOf(' ');
-      let path = output.substring(0, PATH_SEPARATOR);
-      let flags = output.substring(PATH_SEPARATOR).split('#');
+    let isInDirectory = (raw) => {
+      return (raw.indexOf(this.directory) > -1);
+    };
 
-      return {
+    let isRelevant = (raw) => {
+      if (isInDirectory(raw)) return true;
+      else if (isTrash(raw)) return true;
+      else return false;
+    }
 
-      };
+    let results = Bacon
+      .fromEvent(cmd.stdout, 'data')
+      .map(raw => String(raw))
+      .flatMap(founds => Bacon.fromArray(founds.split('\n')))
+      .filter(f => f.trim() != '')
+      .flatMap(output => {
+        debug(output);
+        const PATH_SEPARATOR = output.lastIndexOf(' ');
+        let path = output.substring(0, PATH_SEPARATOR);
+        let flags = [];
+        output.substring(PATH_SEPARATOR).split('#').forEach(f => {
+          flags.push(f.trim());
+        });
+        let isDir = flags.indexOf('IsDir') > -1;
+        let file = {
+          isDir: isDir,
+          path: path
+        };
 
-    });
+        if (flags.indexOf('Removed') > -1) file.action = 'REMOVE';
+        else if (flags.indexOf('Renamed') > -1) file.action = 'MOVE';
+        else if (flags.indexOf('Created') > -1) file.action = 'ADD';
+        else {
+          file.action = 'ADD'; // treat a CHANGE as an ADD
+        }
+        return file;
+      });
 
-  let errors = Bacon
-    .fromEvent(cmd.stderr, 'data')
-    .map(raw => new Bacon.Error(String(raw)));
+    let errors = Bacon
+      .fromEvent(cmd.stderr, 'data')
+      .map(raw => new Bacon.Error(String(raw)));
 
-  let done = Bacon
-    .fromEvent(cmd.stdout, 'close')
-    .map(code => new Bacon.Never()); //todo
-
-  return results.merge(errors).merge(done);
+    return errors.merge(results);
+  }
 }

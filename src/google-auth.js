@@ -79,8 +79,7 @@ function _getNewToken(oauth2Client) {
     oauth2Client.getToken(code, (err, token) => {
       if (err) {
         result.reject(err);
-      }
-      else {
+      } else {
         result.resolve(token);
       }
     });

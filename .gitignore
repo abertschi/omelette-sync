@@ -1,3 +1,5 @@
 node_modules/.bin
 node_modules
 persist
+mydb.db
+npm-debug.log
