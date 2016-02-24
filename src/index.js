@@ -14,13 +14,14 @@ process.on('SIGINT', function() {
 
 let lastrun = Storage.getItem('lastrun');
 let lastupdate = Storage.getItem('lastupdate');
+let initSuccessful = Storage.getItem('init-successful');
 let init = true;
 
 if (lastupdate) {
   lastrun = lastupdate;
 }
 
-if (lastrun) {
+if (lastrun && initSuccessful) {
   lastrun = new Date(lastrun);
   init = false;
   debug('Continuing work from ' + '%s'.green, lastrun);
@@ -35,10 +36,12 @@ let watcher = new Watcher({
 });
 
 watcher.on('init-done', () => {
+  Storage.setItem('init-successful', new Date());
   debug('Initializing is done');
 });
 
 watcher.on('delta-done', () => {
+  Storage.setItem('delta-done', new Date());
   debug('Fetching delta is done');
 });
 

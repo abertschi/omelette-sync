@@ -58,6 +58,7 @@ export default class FsWatchWatcher {
       .flatMap(founds => Bacon.fromArray(founds.split('\n')))
       .filter(f => f.trim() != '')
       .flatMap(output => {
+        debugRaw(output);
 
         const PATH_SEPARATOR = output.lastIndexOf(' ');
         let path = output.substring(0, PATH_SEPARATOR);
@@ -95,8 +96,7 @@ export default class FsWatchWatcher {
                 debug('Detect MOVE to trash of %s (to %s)', source.path, target.path);
                 source.action = 'REMOVE';
                 return source;
-              } else if (path.basename(source.path) == path.basename(target.path)
-                || path.dirname(source.path) == path.dirname(target.path)) {
+              } else if (path.basename(source.path) == path.basename(target.path) || path.dirname(source.path) == path.dirname(target.path)) {
                 if (isInDirectory(target.path)) {
                   debug('Detect MOVE within watched directory [%s to %s]', source.path, target.path);
                   target.pathOrigin = source.path;
@@ -108,9 +108,11 @@ export default class FsWatchWatcher {
                 }
               }
             } else if (isInDirectory(target.path)) {
-              debug('Detect ADD of file moved to watched directory [%s to %s]', source.path, target.path);
-              target.action = 'ADD';
-              return target;
+              if (path.basename(source.path) == path.basename(target.path) || path.dirname(source.path) == path.dirname(target.path)) {
+                debug('Detect ADD of file moved to watched directory [%s to %s]', source.path, target.path);
+                target.action = 'ADD';
+                return target;
+              }
             }
           }
         }
