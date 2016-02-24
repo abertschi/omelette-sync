@@ -1,6 +1,6 @@
 import childProcess from 'child_process';
 import Bacon from 'baconjs';
-let debug = require('debug')('bean:watcher');
+let debug = require('debug')('bean:watcher:shell');
 var path = require('path');
 
 export default class ShellScanner {
@@ -56,6 +56,7 @@ export default class ShellScanner {
       let end = Bacon
         .fromEvent(cmd.stdout, 'close')
         .doAction(code => {
+          debug('Stream ended');
           bus.end()
         });
 
@@ -63,7 +64,8 @@ export default class ShellScanner {
           .fromEvent(cmd.stderr, 'data')
           .map(raw => String(raw))
           .flatMap(founds => Bacon.fromArray(founds.split('\n')))
-          .filter(f => f.trim() != '');
+          .filter(f => f.trim() != '')
+          .doAction(f => debug('error: ', f));
 
 
       results.concat(end).merge(errors)

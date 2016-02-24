@@ -47,34 +47,36 @@ while [[ true ]] ; do
   # Create or update the reference timestamp file.
   touch -t ${TIMESTAMP} "${TIMESTAMP_FILE}"
 
-  CHANGES=`find "${HOME_DIR}" -newer "${TIMESTAMP_FILE}"`
+  CHANGES=`find "${HOME_DIR}" -cnewer "${TIMESTAMP_FILE}"`
 
   if [[ "${CHANGES}" ]] ; then
+
     # if [[ ${OSTYPE} =~ ^darwin ]]; then
     #   CHANGES=`stat ${CHANGES}`
     # else
     #   CHANGES=`ls --full-time ${CHANGES}`
     # fi
 
-    CHANGES_META=`ls -dilaT ${CHANGES}`
+    IFS=$'\n' read -rd '' -a CHANGES_ARRAY <<<"${CHANGES}"
+    INDEX=0
+    META_ARRAY=""
+    for CHANGE in "${CHANGES_ARRAY[@]}" ; do
 
-    # echo "changesMeta: ${CHANGES}"
-    # echo "changesMeta: ${CHANGES_META}"
+      META_ARRAY[INDEX]=`ls -dilaT "${CHANGE}"`
+    ((INDEX++))
+    done
 
-    if [[ "${CHANGES_META}" != "${LAST_CHANGES}" ]] ; then
+    if [[ "${META_ARRAY[@]}" != "${LAST_CHANGES[@]}" ]] ; then
+      LENGTH=${#META_ARRAY[@]}
 
-      IFS=$'\n' read -rd '' -a CHANGES_ARRAY <<<"${CHANGES}"
-      IFS=$'\n' read -rd '' -a CHANGES_META_ARRAY <<<"${CHANGES_META}"
-      IFS=$'\n' read -rd '' -a LAST_CHANGES_ARRAY <<<"${LAST_CHANGES}"
+      for (( i=0; i<${LENGTH}; i++ )); do
+        META=${META_ARRAY[$i]}
 
-      INDEX=0
-      for META in "${CHANGES_META_ARRAY[@]}"
-      do
-        if [[ " ${LAST_CHANGES_ARRAY[@]} " =~ " ${META} " ]]; then
-          # nothing
+        if [[ " ${LAST_CHANGES[@]} " =~ " ${META} " ]]; then
+            # nothing
             echo "" &>/dev/null
         else
-            FILE=${CHANGES_ARRAY[INDEX]}
+            FILE=${CHANGES_ARRAY[i]}
             if [[ -d "${FILE}" ]]; then
               TYPE="d"
             else
@@ -84,12 +86,10 @@ while [[ true ]] ; do
             INODE=`printf "${META}" | cut -d' ' -f1`
             echo "${INODE} ${TYPE} ${FILE}"
         fi
-      INDEX=$INDEX+1
       done
     fi
+    LAST_CHANGES=("${META_ARRAY[@]}")
   fi
 
-  LAST_CHANGES="${CHANGES_META}"
   sleep ${INTERVAL_SECS}
-
 done

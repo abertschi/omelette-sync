@@ -1,8 +1,9 @@
 import childProcess from 'child_process';
 import Bacon from 'baconjs';
 import getFileStats from './../get-file-stats.js';
-let debug = require('debug')('bean:watcher');
+let debug = require('debug')('bean:watcher:fswatch');
 var path = require('path');
+import {createBufferdStream} from './../stream-helpers.js';
 
 
 export default class FsWatchWatcher {
@@ -67,12 +68,32 @@ export default class FsWatchWatcher {
         else {
           file.action = 'ADD'; // treat a CHANGE as an ADD
         }
+
+        debug(file);
         return file;
       });
 
+      let cache = createBufferdStream(results, 2);
+
+      cache.changes()
+        .flatMap(cache => {
+          if (cache.length >= 2) {
+            let first = cache[0];
+            let last = cache[1];
+
+            if (first.action == 'MOVE' && last.action == 'MOVE') {
+              if (path.dirname(first.path) == path.dirname(last.action)) {
+
+              }
+            }
+          }
+        });
+
+
     let errors = Bacon
       .fromEvent(cmd.stderr, 'data')
-      .map(raw => new Bacon.Error(String(raw)));
+      .map(raw => new Bacon.Error(String(raw)))
+      .doAction(f => debug(f));
 
     return errors.merge(results);
   }

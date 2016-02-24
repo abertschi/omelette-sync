@@ -37,25 +37,28 @@ export default class Watcher extends EventEmitter {
           debug('Creating new index ...');
           return initIndex()
             .flatMap(_ => {
-              return listRecursive(this.directory)
-                .flatMapLatest(file => {
+              let stream =  listRecursive(this.directory)
+                .flatMap(file => {
                   file.action = 'ADD';
                   return file;
-                })
-                .onEnd(() => {
+                });
+                stream.onEnd(() => {
                   this.emit('init-done');
                 });
+                return stream;
             });
         } else {
           return listChanges(this.directory, this.since)
-            .map(file => {
-              return prepareShellStream(file)
+            .flatMap(file => {
+              let shell = prepareShellStream(file);
+              shell.onEnd(() => {
+                this.emit('last-changes-done');
+              });
+              return shell;
             })
-            .onEnd(() => {
-              this.emit('last-changes-done');
-            });
         }
-      }).merge(this._getWatcherStream())
+      }).doAction(f => debug(f))
+      .merge(this._getWatcherStream())
       .flatMap(file => {
         debug('Processing change %s', file.path);
         return addToIndex(file, this.directory)
@@ -70,7 +73,7 @@ export default class Watcher extends EventEmitter {
   }
 
   _getWatcherStream() {
-    if (this.watcherName == 'Linux' || this.watcherName == 'shell') {
+    if (this.watcherName == 'Linux' || this.watcherName == 'shell' || true) {
       debug('Using ShellWatcher to observe directory changes');
       this.watcher = new ShellWatcher({
         directory: this.directory
@@ -87,10 +90,8 @@ export default class Watcher extends EventEmitter {
         directory: this.directory
       });
 
-      let stream = this.watcher.watch();
-      let cache = createBufferdStream(stream, 2);
-      return stream.flatMap(file => {
-          return prepareFsWatchStream(file, cache);
+      return this.watcher.watch().flatMap(file => {
+          return prepareFsWatchStream(file);
         });
     }
   }

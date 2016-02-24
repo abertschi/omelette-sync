@@ -9,7 +9,7 @@ import {createBufferdStream} from './stream-helpers.js';
 let debug = require('debug')('bean:watcher');
 
 
-export default function prepareFsWatchStream(file, cache) {
+export default function prepareFsWatchStream(file) {
 
   return createMetaStream(file)
     .doAction(file => {
@@ -39,7 +39,8 @@ export default function prepareFsWatchStream(file, cache) {
         return file;
       }
     })
-    .filter(f => f && f != undefined);
+    .filter(f => f && f != undefined)
+    .doAction(f => debug(f));
 }
 
 function createMetaStream(file) {
@@ -59,7 +60,7 @@ function createMetaStream(file) {
             return file;
           });
       } else {
-        return Bacon.once(file);
+        return file;
       }
     });
 }
