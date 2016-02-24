@@ -73,7 +73,7 @@ export default class Watcher extends EventEmitter {
   }
 
   _getWatcherStream() {
-    if (this.watcherName == 'Linux' || this.watcherName == 'shell' || true) {
+    if (this.watcherName == 'Linux' || this.watcherName == 'shell') {
       debug('Using ShellWatcher to observe directory changes');
       this.watcher = new ShellWatcher({
         directory: this.directory

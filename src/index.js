@@ -45,7 +45,7 @@ watcher.on('delta-done', () => {
 watcher.watch()
   .onValue(change => {
     Storage.setItem('lastupdate', change.timestamp);
-    debug('Change [%s]: %s (%s) (%s)', change.action, change.path, change.pathOrigin, change.id);
+    debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin? `(from ${change.pathOrigin})`: '', change.id || '-');
   });
 
 

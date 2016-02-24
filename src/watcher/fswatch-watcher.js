@@ -2,8 +2,12 @@ import childProcess from 'child_process';
 import Bacon from 'baconjs';
 import getFileStats from './../get-file-stats.js';
 let debug = require('debug')('bean:watcher:fswatch');
+let debugRaw = require('debug')('bean:watcher:fswatch:raw');
 var path = require('path');
-import {createBufferdStream} from './../stream-helpers.js';
+import {
+  createBufferdStream
+} from './../stream-helpers.js';
+import username from 'username';
 
 
 export default class FsWatchWatcher {
@@ -14,10 +18,14 @@ export default class FsWatchWatcher {
   }
 
   watch() {
+    const dir = '/'
     const SCRIPT = __dirname + '/fswatch-watcher.sh';
-    this.watchSpawn = childProcess.spawn('sh', [SCRIPT, this.directory]);
+    this.watchSpawn = childProcess.spawn('sh', [SCRIPT, dir]);
 
-    return this._processOutput(this.watchSpawn);
+    return Bacon.fromPromise(username())
+      .flatMap(username => {
+        return this._processOutput(this.watchSpawn, username);
+      })
   }
 
   stopWatch() {
@@ -27,8 +35,9 @@ export default class FsWatchWatcher {
     }
   }
 
-  _processOutput(cmd) {
+  _processOutput(cmd, username) {
 
+    const TRASH = `/Users/${username}/.Trash`;
     let isTrash = (raw) => {
       return raw.indexOf(TRASH) > -1 ? true : false;
     }
@@ -49,7 +58,7 @@ export default class FsWatchWatcher {
       .flatMap(founds => Bacon.fromArray(founds.split('\n')))
       .filter(f => f.trim() != '')
       .flatMap(output => {
-        debug(output);
+
         const PATH_SEPARATOR = output.lastIndexOf(' ');
         let path = output.substring(0, PATH_SEPARATOR);
         let flags = [];
@@ -69,32 +78,53 @@ export default class FsWatchWatcher {
           file.action = 'ADD'; // treat a CHANGE as an ADD
         }
 
-        debug(file);
         return file;
       });
 
-      let cache = createBufferdStream(results, 2);
+    let cache = createBufferdStream(results, 2);
 
-      cache.changes()
-        .flatMap(cache => {
-          if (cache.length >= 2) {
-            let first = cache[0];
-            let last = cache[1];
+    let moveStream = cache.changes()
+      .flatMap(cache => {
+        if (cache.length >= 2) {
+          let source = cache[0]; // move from event
+          let target = cache[1]; // move to event
 
-            if (first.action == 'MOVE' && last.action == 'MOVE') {
-              if (path.dirname(first.path) == path.dirname(last.action)) {
-
+          if (source.action == 'MOVE' && target.action == 'MOVE') {
+            if (isInDirectory(source.path)) {
+              if (isTrash(target.path)) {
+                debug('Detect MOVE to trash of %s (to %s)', source.path, target.path);
+                source.action = 'REMOVE';
+                return source;
+              } else if (path.basename(source.path) == path.basename(target.path)
+                || path.dirname(source.path) == path.dirname(target.path)) {
+                if (isInDirectory(target.path)) {
+                  debug('Detect MOVE within watched directory [%s to %s]', source.path, target.path);
+                  target.pathOrigin = source.path;
+                  return target;
+                } else {
+                  debug('Detect MOVE out of watched directory [%s to %s]', source.path, target.path);
+                  source.action = 'REMOVE';
+                  return source;
+                }
               }
+            } else if (isInDirectory(target.path)) {
+              debug('Detect ADD of file moved to watched directory [%s to %s]', source.path, target.path);
+              target.action = 'ADD';
+              return target;
             }
           }
-        });
+        }
+      }).filter(f => f != undefined);
 
+    results = results
+      .filter(f => f.action != 'MOVE')
+      .filter(f => isRelevant(f.path));
 
     let errors = Bacon
       .fromEvent(cmd.stderr, 'data')
       .map(raw => new Bacon.Error(String(raw)))
       .doAction(f => debug(f));
 
-    return errors.merge(results);
+    return results.merge(moveStream).merge(errors);
   }
 }
