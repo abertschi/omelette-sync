@@ -14,33 +14,7 @@ export default function prepareFsWatchStream(file) {
   return createMetaStream(file)
     .doAction(file => {
       debug('Processing %s with Action %s', file.path, file.action);
-    })
-    .flatMap(file => {
-      if (file.action == 'MOVE') {
-        if (file.exists) {
-          return getFromIndexById(file.id)
-            .map(index => {
-              file.pathOrigin = index.path;
-              debug('Detect RENAME of %s to %s', file.pathOrigin, file.path);
-              return file;
-            });
-        } else {
-          return getFromIndexByPath(file.path)
-            .map(index => { // TODO: detect move
-              if (index) {
-                debug('Detect REMOVE of %s', file.path);
-                file.action = 'REMOVE';
-                return file;
-              }
-            });
-        }
-      } else {
-        debug('Detect ADD or CHANGE of %s (%s)', file.path, file.id);
-        return file;
-      }
-    })
-    .filter(f => f && f != undefined)
-    .doAction(f => debug(f));
+    });
 }
 
 function createMetaStream(file) {

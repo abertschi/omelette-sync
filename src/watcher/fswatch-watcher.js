@@ -120,7 +120,7 @@ export default class FsWatchWatcher {
 
     results = results
       .filter(f => f.action != 'MOVE')
-      .filter(f => isRelevant(f.path));
+      .filter(f => isInDirectory(f.path));
 
     let errors = Bacon
       .fromEvent(cmd.stderr, 'data')

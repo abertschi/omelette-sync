@@ -59,11 +59,12 @@ export default class Watcher extends EventEmitter {
         }
       }).doAction(f => debug(f))
       .merge(this._getWatcherStream())
-      .doAction(file => {
-        debug('Processing change %s', file.path);
-        addToIndex(file, this.directory)
-          .doAction(() => {
+      .flatMap(file => {
+        debug('Processing change %s (%s) [%s]', file.path, file.action, file.id);
+        return addToIndex(file, this.directory)
+          .map((comment) => {
             debug('Index updated for %s', file.path);
+            return file;
           })
       })
       .map(file => {

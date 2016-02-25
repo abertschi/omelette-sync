@@ -4,7 +4,7 @@ import path from 'path';
 let debug = require('debug')('bean:index');
 
 export default function addToIndex(file, rootDirectory) {
-  debug('Adding %s to index ', file.path);
+  debug('Adding %s to index [%s]', file.path, file.action);
   switch (file.action) {
     case 'ADD':
     case 'MOVE':
@@ -33,24 +33,39 @@ function addOrMove(file) {
     db.get(SELECT, [file.id], function(err, indexRow) {
       if (indexRow) {
         debug('check for undefined (index, file)', indexRow, file);
+
+        db.run(UPDATE, [file.path, indexRow.file_id], () => {
+          debug('Updated %s (%s)', file.path, indexRow.file_id);
+          sink({
+            id: indexRow.file_id,
+            action: 'updated'
+          });
+        });
+
         db.all(SELECT_FOR_PATH, [file.pathOrigin + '%'], (err, rows) => {
           const PARENT_DIR_ORIGIN = file.isDir ? file.pathOrigin : path.dirname(file.pathOrigin);
           const PARENT_DIR_NEW = file.isDir ? file.path : path.dirname(file.path);
 
           rows.forEach(row => {
-            debug('Updating %s by changing %s to %s', row.path, PARENT_DIR_ORIGIN, PARENT_DIR_NEW);
             let path = row.path.replace(PARENT_DIR_ORIGIN, PARENT_DIR_NEW);
+            debug('Updating path of %s from %s to %s', row.file_id, row.path, path);
 
             db.run(UPDATE, [path, row.file_id], () => {
-              debug('Updated %s (%s)', path, row.file_id);
-              sink('updated');
+              debug('Updated %s to %s', row.file_id, path);
+              sink({
+                id: row.file_id,
+                action: 'updated'
+              });
             });
           });
         });
       } else {
         db.run(INSERT, [file.id, file.path, file.isDir], () => {
           debug('Inserted %s (%s)', file.path, file.id);
-          sink('inserted');
+          sink({
+            id: file.id,
+            action: 'inserted'
+          });
         });
       }
     });
