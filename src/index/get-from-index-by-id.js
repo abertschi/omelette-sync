@@ -1,5 +1,5 @@
 import Bacon from 'baconjs';
-import db from './db.js';
+import db from '../db.js';
 let debug = require('debug')('bean:index');
 
 export default function getFromIndexById(fileId) {

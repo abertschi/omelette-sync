@@ -1,7 +1,7 @@
 import Bacon from 'baconjs';
 import db from './db.js';
-import getFromIndexById from './get-from-index-by-id.js';
-import getChildrenOfDirectoryFromIndex from './get-children-of-directory-from-index.js';
+import getFromIndexById from './index/get-from-index-by-id.js';
+import getChildrenOfDirectoryFromIndex from './index/get-children-of-directory-from-index.js';
 import {list} from './offline-watcher/shell-list-files.js'
 
 let debug = require('debug')('bean:watcher');

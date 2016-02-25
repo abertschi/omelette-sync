@@ -1,5 +1,5 @@
 import Bacon from 'baconjs';
-import db from './db.js';
+import db from '../db.js';
 
 export default function initIndex() {
   const REMOVE = 'DELETE FROM DIRECTORY_INDEX WHERE 1';
