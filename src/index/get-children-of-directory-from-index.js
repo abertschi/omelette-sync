@@ -10,7 +10,7 @@ export default function getChildrenOfDirectoryFromIndex(dir) {
     db.all(SQL, [dir.path + '%', dir.id], (err, rows) => {
       let result = new Array();
       rows.forEach(row => {
-        debug('like: %s', row.path)
+
         if (path.dirname(row.path) == dir.path) {
           result.push({
             id: row.file_id,

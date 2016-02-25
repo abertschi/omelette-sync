@@ -50,7 +50,7 @@ function processOutput(cmd) {
   let end = Bacon
     .fromEvent(cmd.stdout, 'close')
     .onValue(code => {
-      debug('Ending script');
+      debug('Detection of offline changes ended');
       bus.end()
     });
 
@@ -64,7 +64,6 @@ function processOutput(cmd) {
 
   results.merge(errors)
     .onValue(v => {
-      debug('push:', v);
       bus.push(v)
     });
 

@@ -30,9 +30,10 @@ if (lastrun && initSuccessful) {
 }
 
 let watcher = new Watcher({
-  directory: '/Users/abertschi/Dropbox',
+  directory: '/Users/abertschi',
   since: lastrun,
-  init: init
+  init: init,
+  type: 'fswatch'
 });
 
 watcher.on('init-done', () => {

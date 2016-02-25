@@ -14,6 +14,8 @@ export default class ShellScanner {
 
   watch() {
     const SCRIPT = __dirname + '/watch-directory.sh';
+    debug('Start watching of %s [%s, %s]', this.directory, this.interval, this.lookback);
+
     this.watchSpawn = childProcess.spawn('sh', [SCRIPT, this.directory, this.interval, this.lookback]);
     return this._processOutput(this.watchSpawn);
   }

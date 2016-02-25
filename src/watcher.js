@@ -26,7 +26,7 @@ export default class Watcher extends EventEmitter {
     this.directory = options.directory;
     this.init = options.init || false;
     this.since = options.since;
-    this.watcherName = options.watcherName || os.type();
+    this.type = options.type || os.type();
     this.watcher = null;
   }
 
@@ -74,7 +74,7 @@ export default class Watcher extends EventEmitter {
   }
 
   _getWatcherStream() {
-    if (this.watcherName == 'Linux' || this.watcherName == 'shell') {
+    if (this.type == 'Linux' || this.type == 'shell') {
       debug('Using ShellWatcher to observe directory changes');
       this.watcher = new ShellWatcher({
         directory: this.directory
@@ -85,7 +85,7 @@ export default class Watcher extends EventEmitter {
           return prepareShellStream(file);
         });
 
-    } else if(this.watcherName == 'fswatch' || this.watcherName == 'Darwin') {
+    } else if(this.type == 'fswatch' || this.type == 'Darwin') {
       debug('Using FsWatchWatcher to observe directory changes');
       this.watcher = new FsWatchWatcher({
         directory: this.directory
