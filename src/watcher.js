@@ -11,7 +11,7 @@ import {createBufferdStream} from './stream-helpers.js';
 import {
   listChanges,
   listRecursive
-} from './offline-watcher/shell-list-files.js'
+} from './offline/shell-list-files.js'
 import ShellWatcher from './watcher/shell-watcher.js';
 import FsWatchWatcher from './watcher/fswatch-watcher.js';
 import os from 'os';
