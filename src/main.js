@@ -70,8 +70,7 @@ retrieveGoogleAuth().then(bundle => {
   // .then(found => console.log('found!', found))
   // .catch(e => console.log('bean err', e));
 
-  debug('createfolders');
-  gDrive.createFolders('/bee/bar/test/bean')
+  gDrive.createFoldersByPath('/bee/bar/test/test2')
   .then(found => console.log('done!', found))
   .catch(e => console.log('bean err', e));
 

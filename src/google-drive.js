@@ -12,44 +12,17 @@ const BACON_SEQUENTIAL_WAIT = 150;
 export default class GoogleDrive {
 
   constructor(options = {}) {
-      this.watchHomeDir = options.watchHomeDir;
-      if (!this.watchHomeDir.endsWith('/')) {
-        this.watchHomeDir += '/';
-      }
-      this.auth = options.auth;
-      this.rootDir = options.rootDir || '/';
-      this.generatedIds = [];
+    this.auth = options.auth;
+    this.rootDir = options.rootDir || '/';
+    this.generatedIds = [];
 
-      google.options({
-        auth: this.auth
-      });
+    google.options({
+      auth: this.auth
+    });
 
-      this.drive = google.drive('v3');
+    this.drive = google.drive('v3');
 
-    }
-    //
-    // getGeneratedId() {
-    //   return Bacon.once(this.generatedIds)
-    //     .flatMap(ids => {
-    //       if (!ids.length) {
-    //
-    //         const ARGS = {
-    //           maxResults: 20
-    //         }
-    //
-    //         return Bacon
-    //           .fromNodeCallback(this.drive.files.generateIds, ARGS)
-    //           .map(response => {
-    //             return ids.concat(response.ids);
-    //           });
-    //       }
-    //     })
-    //     .map(ids => {
-    //       let id = ids.pop;
-    //       this.generatedIds = ids;
-    //       return id;
-    //     });
-    // }
+  }
 
   doAdd(upload) {
     let options = {
@@ -72,60 +45,34 @@ export default class GoogleDrive {
       });
   }
 
-
-
-  getFileIdByPath(directory) {
-    let parents = directory.replace(this.watchHomeDir, '').split('/');
+  getFileMetaByPath(directory) {
+    let parents = directory.split('/').filter(a => a.trim() != '');
     let basename = parents.pop();
-    let directories = parents.reverse().filter(a => a.trim() != '');
+    let parentDirectories = parents.reverse()
 
-    return Promise
-      .resolve(this.searchFiles(basename)
-        .then(result => {
-          let files = result.files;
-          if (files.length == 1) {
-            return files[0].id;
-          } else if (files.length > 1) {
-            return Bacon
-              .sequentially(BACON_SEQUENTIAL_WAIT, files)
-              .filter(f => f.parents.length)
-              .flatMapLatest(f => {
-                // no scenario is familiar where a file has more than 1 parents
-                // always stick to first parent
-                return Bacon
-                  .fromPromise(this._isParent(f.parents[0], directories, 0))
-                  .filter(found => found)
-                  .flatMap([new Bacon.Next(f), new Bacon.End()]);
-              })
-              .fold([], (array, file) => {
-                array.push(file);
-                return array;
-              })
-              .flatMap(array => {
-                debug('array size', array.length);
-                if (!array.length) {
-                  return Bacon.once(new Bacon.Error(`No file found with path ${directory}`));
-                } else {
-                  return Bacon.once(array[0]);
-                }
-              })
-              .firstToPromise();
-          } else {
-            throw new Error(`No file found with path ${directory}`);
-          }
-        }));
+    return Promise.resolve(this.search(basename)
+      .then(found => {
+        let foundFiles = found.files;
+        if (foundFiles.length == 1) {
+          // only 1 file found. No futher search necessary.
+          return foundFiles[0].id;
+        } else if (searchResults.files.length > 1) {
+          return this._findMatchingParent(foundFiles, parentDirectories);
+        } else {
+          throw new Error(`No file found with path ${directory}`);
+        }
+      }));
   }
 
-  getFileInfo(fileId) {
+  getFileMeta(fileId) {
     let options = {
       fileId: fileId,
       fields: 'id, name, parents'
     }
-    return Promise
-      .promisify(this.drive.files.get)(options);
+    return Promise.promisify(this.drive.files.get)(options);
   }
 
-  searchFiles(name, parms = {}) {
+  search(name, parms = {}) {
     let options = {
       q: `name='${name}'`,
       fields: 'nextPageToken, files(id, name, parents)'
@@ -140,10 +87,8 @@ export default class GoogleDrive {
     let trashed = options.includeTrashed ? true : false;
     options.q = options.q + ` and trashed = ${trashed}`;
 
-
     debug(options);
-    return Promise
-      .promisify(this.drive.files.list)(options);
+    return Promise.promisify(this.drive.files.list)(options);
   }
 
 
@@ -173,29 +118,15 @@ export default class GoogleDrive {
 
   changes() {}
 
-  createFolders(basedir) {
+  createFoldersByPath(basedir) {
     let childdirs = basedir.split('/').filter(a => a.trim() != '');
     debug('Creating folders [%s]', childdirs);
-    let index = 0;
-    return this._createFolders(null, childdirs, index)
+
+    return this._createFoldersRecursively(null, childdirs)
       .then(success => {
         debug('folders %s created. child id: %s', basedir, success.id);
         return success.id;
       });
-  }
-
-  _createFolders(parentId, directories, directoryIndex) {
-    debug('Creating folders recursively. Now for %s [out of %s with index %s]', parentId, directories, directoryIndex);
-    return Bacon.fromPromise(this.createFolder(directories[directoryIndex], parentId))
-      .flatMap(successful => {
-        directoryIndex++;
-        if (directoryIndex < directories.length) {
-          return Bacon.fromPromise(this._createFolders(successful.id, directories, directoryIndex));
-        } else {
-          debug('All folders [%s] created. child id: %s', directories, successful.id);
-          return Bacon.once(successful);
-        }
-      }).toPromise();
   }
 
   createFolder(folderName, parentId = null) {
@@ -205,7 +136,7 @@ export default class GoogleDrive {
     else
       searchArgs.onRoot = true;
 
-    return this.searchFiles(folderName, searchArgs)
+    return this.search(folderName, searchArgs)
       .then(found => {
         let existing;
         if (found.files.length) {
@@ -235,12 +166,54 @@ export default class GoogleDrive {
       });
   }
 
-  _isParent(parentId, directories, index) {
-    return this.getFileInfo(parentId)
+  _createFoldersRecursively(parentId, directories, directoryIndex = 0) {
+    debug('Creating folders recursively. Now for %s [out of %s with index %s]', parentId, directories, directoryIndex);
+
+    return Promise.resolve(this.createFolder(directories[directoryIndex], parentId))
+      .then(successful => {
+        directoryIndex++;
+        if (directoryIndex < directories.length) {
+          return this._createFoldersRecursively(successful.id, directories, directoryIndex);
+        } else {
+          debug('All folders [%s] created. child id: %s', directories, successful.id);
+          return successful;
+        }
+      });
+  }
+
+  _findMatchingParent(files, parentDirectories) {
+    return Bacon
+      .sequentially(BACON_SEQUENTIAL_WAIT, files)
+      .filter(file => file.parents.length)
+      .flatMapLatest(file => {
+        // no scenario is familiar where a file has more than 1 parents
+        // always stick to first parent
+        let parentId = file.parents[0];
+        return Bacon
+          .fromPromise(this._followParents(parentId, parentDirectories))
+          .filter(found => found)
+          .flatMap([new Bacon.Next(f), new Bacon.End()]);
+      })
+      .fold([], (array, file) => {
+        array.push(file);
+        return array;
+      })
+      .flatMap(array => {
+        if (!array.length) {
+          return Bacon.once(new Bacon.Error(`No file found with path ${directory}`));
+        } else {
+          return Bacon.once(array[0]);
+        }
+      })
+      .firstToPromise();
+  }
+
+  _followParents(parentId, directories = [], index = 0) {
+    return this.getFileMeta(parentId)
       .then(file => {
         if (file.name == directories[index]) {
           if (file.parents.length && index < directories.length) {
-            return this._isParent(file.parents[0], directories, index++);
+            return this._followParents(file.parents[0], directories, index++);
           } else {
             debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
             return true;
