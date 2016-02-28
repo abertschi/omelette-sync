@@ -72,6 +72,8 @@ export default class GoogleDrive {
       });
   }
 
+
+
   getFileIdByPath(directory) {
     let parents = directory.replace(this.watchHomeDir, '').split('/');
     let basename = parents.pop();
@@ -123,15 +125,19 @@ export default class GoogleDrive {
       .promisify(this.drive.files.get)(options);
   }
 
-  searchFiles(name, trashed = false, nextPageToken = null) {
+  searchFiles(name, parms = {}) {
     let options = {
-      q: `name='${name}' and trashed = ${trashed}`,
+      q: `name='${name}'`,
       fields: 'nextPageToken, files(id, name, parents)'
     }
 
-    if (nextPageToken) {
-      options.pageToken = nextPageToken;
-    }
+    if (parms.trashed !== false)
+      options.q += ' and trashed = true';
+    if (parms.nextPageToken)
+      options.pageToken = parms.nextPageToken;
+    if (parms.onRoot)
+      options.q += " and 'root' in parents";
+
     return Promise
       .promisify(this.drive.files.list)(options);
   }
@@ -174,26 +180,100 @@ export default class GoogleDrive {
 
   changes() {}
 
-  _ensureFoldersAreCreated(basedir) {
+  createFolders(basedir) {
+    let childdirs = basedir
+      .split('/')
+      .filter(a => a.trim() != '');
+    let rootdir = childdirs.shift();
+    debug('rootdir: %s and childs: %s', rootdir, childdirs);
 
+
+    return Bacon.once(rootdir)
+      .flatMap(dir => {
+        let search = {
+          onRoot: true
+        }
+
+  //       Bacon.fromArray([1,2,3])
+  // .withStateMachine(0, function(sum, event) {
+  //   if (event.hasValue())
+  //     return [sum + event.value(), []]
+  //   else if (event.isEnd())
+  //     return [undefined, [new Bacon.Next(sum), event]]
+  //   else
+  //     return [sum, [event]]
+  // })
+
+        return Bacon.fromPromise(this.searchFiles(dir, search))
+          .flatMapLatest(rootdirInfo => {
+            if (!rootdirInfo.files.length) {
+              childdirs.unshift(dir);
+            }
+            let init = {
+              id: rootdirInfo.id || false,
+              name: rootdirInfo.name || false
+            };
+
+            return Bacon.sequentially(BACON_SEQUENTIAL_WAIT, childdirs)
+              .fold([init], (array, directory) => {
+                let last = array[array.length - 1];
+                debug('last', last, array[array.length - 1]);
+                return Bacon.fromPromise(this.createFolder(directory, last.id))
+                  .map(created => {
+                    debug(created);
+                    array.push({
+                      id: created.id,
+                      name: directory
+                    });
+                    return array;
+                  });
+              });
+          });
+      }).toPromise();
   }
 
-  _isParent(parentId, tree, index) {
+  _createFolder(folderName, parentId, directories, directoryIndex) {
+    return Bacon.fromPromise(this.createFolder(folderName, parentId))
+      .flatMap(successful => {
+        if (directories.length < directoryIndex) {
+          directoryIndex++;
+          return this._createFolder(directories[directoryIndex], successful.id, directories, directoryIndex);
+        }
+      });
+  }
+
+  createFolder(folderName, parentId = null) {
+    let options = {
+      resource: {
+        name: folderName,
+        mimeType: FOLDER_MIME_TYPE
+      },
+      fields: 'id, name'
+    }
+
+    if (parentId)
+      options.resource.parents = [parentId];
+
+    return Promise
+      .promisify(this.drive.files.create)(options);
+  }
+
+  _isParent(parentId, directories, index) {
     return this.getFileInfo(parentId)
       .then(file => {
-        if (file.name == tree[index]) {
-          if (file.parents.length && index < tree.length) {
-            return this._isParent(file.parents[0], tree, index++);
+        if (file.name == directories[index]) {
+          if (file.parents.length && index < directories.length) {
+            return this._isParent(file.parents[0], directories, index++);
           } else {
-            debug('parent %s (%s) matches directory tree %s', file.id, file.name, tree);
+            debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
             return true;
           }
         } else {
-          if (file.name == ROOT_NAME_DRIVE && (index >= tree.length || !tree.length)) {
-            debug('parent %s (%s) matches directory tree %s', file.id, file.name, tree);
+          if (file.name == ROOT_NAME_DRIVE && (index >= directories.length || !directories.length)) {
+            debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
             return true;
           } else {
-            debug('parent %s (%s) does not match directory tree %s', file.id, file.name, tree);
+            debug('parent %s (%s) does not match directory tree %s', file.id, file.name, directories);
             return false;
           }
         }
