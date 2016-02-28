@@ -1,8 +1,15 @@
 import Watcher from './watcher.js';
 import Storage from './storage.js';
+import UploadQueue from './upload-queue.js';
 let debug = require('debug')('bean:app');
 import colors from 'colors';
-
+import googleAuth from './google-auth.js';
+import readline from 'readline';
+import Q from 'Q';
+import Bacon from 'baconjs';
+import fs from 'fs';
+import retrieveGoogleAuth from './retrieve-google-auth.js';
+import GoogleDrive from './google-drive.js';
 
 process.on('SIGINT', function() {
   Storage.setItem('lastrun', new Date());
@@ -29,8 +36,9 @@ if (lastrun && initSuccessful) {
   debug('Initializing application');
 }
 
+const WATCH_HOMEDIR = '/Users/abertschi/Dropbox/tmp';
 let watcher = new Watcher({
-  directory: '/Users/abertschi',
+  directory: WATCH_HOMEDIR,
   since: lastrun,
   init: init,
   type: 'fswatch'
@@ -46,17 +54,47 @@ watcher.on('delta-done', () => {
   debug('Fetching delta is done');
 });
 
-watcher.watch()
-  .onValue(change => {
-    Storage.setItem('lastupdate', change.timestamp);
-    debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin? `(from ${change.pathOrigin})`: '', change.id || '-');
+let queue = new UploadQueue();
+let gDrive;
+
+retrieveGoogleAuth().then(bundle => {
+
+  console.log(bundle);
+
+  gDrive = new GoogleDrive({
+    watchHomeDir: WATCH_HOMEDIR
+    auth: bundle.auth
   });
+
+
+
+  watcher.watch()
+    .onValue(change => {
+      Storage.setItem('lastupdate', change.timestamp);
+      debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
+      queue.push(change);
+    });
+
+
+});
+
+
+
 
 
 running();
 
+let firstUpload;
+
 function running() {
   setTimeout(function() {
+
+      if (queue.getSize()) {
+        firstUpload = false;
+        let upload = queue.get();
+        debug('Progressing next upload: %s %s', upload.action, upload.path);
+        gDrive.upload(upload);
+      }
     running();
-  }, 5000);
+  }, 100);
 }

@@ -16,7 +16,7 @@ let debug = require('debug')('bean-google-auth');
 const CLIENT_SECRET = require('./../client_secret.json');
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
-class GoogleAuth {
+export default class GoogleAuth {
 
   constructor() {
     let clientSecret = CLIENT_SECRET.installed.client_secret;
@@ -35,23 +35,22 @@ class GoogleAuth {
     return authUrl.trim();
   }
 
-  getTokenByAuthCode(code) {
-    let result = Q.defer();
-    this.oauth2Client.getToken(code, (err, token) => {
-      if (err) {
-        result.reject(err);
-      } else {
-        result.resolve(token);
-      }
+  generateTokenStream(code) {
+    return Bacon.fromBinder(sink => {
+      this.oauth2Client.getToken(code, (err, token) => {
+        if (err) {
+          sink(new Bacon.Error(err));
+        } else {
+          sink(token);
+        }
+      });
     });
-    return result.promise;
   }
 
-  getAuthByToken(token = {}) {
+  getAuth(token = {}) {
     let auth = this.oauth2Client;
-    auth.setCredentials(token);
+    auth.credentials = token;
     return auth;
   }
-}
 
-export default new GoogleAuth();
+}
