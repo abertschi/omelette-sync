@@ -2,8 +2,12 @@ var google = require('googleapis');
 var path = require('path');
 var Promise = require('bluebird');
 import fs from 'fs';
+import Bacon from 'baconjs';
+let debug = require('debug')('bean:app');
 
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
+const ROOT_NAME_DRIVE = 'My Drive';
+const BACON_SEQUENTIAL_WAIT = 150;
 
 export default class GoogleDrive {
 
@@ -47,13 +51,7 @@ export default class GoogleDrive {
     //     });
     // }
 
-
   doAdd(upload) {
-    let f = this.getFilesByName('cd01_artist - Track 1.mp3');
-
-    console.log(f);
-    f.then(o => console.log('then', JSON.stringify(o, 4)));
-
     let options = {
       resource: {
         name: path.basename(upload.path)
@@ -64,9 +62,9 @@ export default class GoogleDrive {
       fields: 'id'
     };
 
-    return Promise.promisify(this.drive.files.create)(options)
+    return Promise
+      .promisify(this.drive.files.create)(options)
       .then(response => {
-        console.log(response);
         return response;
       })
       .catch(function(err) {
@@ -74,75 +72,70 @@ export default class GoogleDrive {
       });
   }
 
-  getFileIdByPath(upload) {
-    let parents = upload.path.replace(this.watchHomeDir, '').split('/');
+  getFileIdByPath(directory) {
+    let parents = directory.replace(this.watchHomeDir, '').split('/');
     let basename = parents.pop();
-    let parentsShifted = parents.shift();
+    let directories = parents.reverse().filter(a => a.trim() != '');
 
-    this.getFilesByName(basename).then(result => {
-      let files = result.files;
-      if (files.length == 1) {
-        return files[0].id;
-      } else if (files.length > 1) {
-        for(let i = 0; i < files.length; i++) {
-          let file = files[i];
-          let parents = file.parents;
-          console.log('parents.length: ', parents.length);
-
-          if (!parents.length || !parentsShifted.length) {
-            continue;
+    return Promise
+      .resolve(this.searchFiles(basename)
+        .then(result => {
+          let files = result.files;
+          if (files.length == 1) {
+            return files[0].id;
+          } else if (files.length > 1) {
+            return Bacon
+              .sequentially(BACON_SEQUENTIAL_WAIT, files)
+              .filter(f => f.parents.length)
+              .flatMapLatest(f => {
+                // no scenario is familiar where a file has more than 1 parents
+                // always stick to first parent
+                return Bacon
+                  .fromPromise(this._isParent(f.parents[0], directories, 0))
+                  .filter(found => found)
+                  .flatMap([new Bacon.Next(f), new Bacon.End()]);
+              })
+              .fold([], (array, file) => {
+                array.push(file);
+                return array;
+              })
+              .flatMap(array => {
+                debug('array size', array.length);
+                if (!array.length) {
+                  return Bacon.once(new Bacon.Error(`No file found with path ${directory}`));
+                } else {
+                  return Bacon.once(array[0]);
+                }
+              })
+              .firstToPromise();
+          } else {
+            throw new Error(`No file found with path ${directory}`);
           }
-
-          let parent = parents[0];
-          this.isParent(parent.id, parentsShifted, 0)
-            .then(isParent => {
-
-            });
-        });
-      }
-    });
+        }));
   }
 
-  isParent(parentId, tree, index) {
-    return this.getFileInfo(parentId).then(file => {
-      if (file.name == tree[index]) {
-        if (file.parents.length && index < tree.length) {
-          console.log('parents.length', file.parents.length);
-          index++;
-          return isParent(file.parent[0].id, tree, index);
-        } else {
-          return true;
-        }
-      } else {
-        return false;
-      }
-    });
-  }
-
-  getFileInfo(fileId) {
+  getFileInfo(fileId, trashed = false) {
     let options = {
-      fileId: fileId;
+      fileId: fileId,
+      fields: 'id, name, parents'
     }
-    return Promise.promisify(this.drive.files.get)(options);
+    return Promise
+      .promisify(this.drive.files.get)(options);
   }
 
-
-
-
-  getFilesByName(name, nextPageToken = null) {
+  searchFiles(name, trashed = false, nextPageToken = null) {
     let options = {
-      q: `name='${name}'`,
-      trashed: false,
+      q: `name='${name}' and trashed = ${trashed}`,
       fields: 'nextPageToken, files(id, name, parents)'
     }
+
     if (nextPageToken) {
       options.pageToken = nextPageToken;
     }
-    return Promise.promisify(this.drive.files.list)(options);
+    return Promise
+      .promisify(this.drive.files.list)(options);
   }
 
-  //id: '0B9MT6owYhA0DMXJpeGY3MUNJMGc',
-  //name: 'bean-test',
   createFolder(name) {
     let options = {
       resource: {
@@ -151,15 +144,8 @@ export default class GoogleDrive {
       }
     }
 
-    return Promise.promisify(this.drive.files.create)(options)
-      .then(response => {
-        console.log(response);
-        return response;
-      })
-      .catch(function(err) {
-        console.log('err', err);
-        return err;
-      });
+    return Promise
+      .promisify(this.drive.files.create)(options);
   }
 
   //
@@ -170,12 +156,11 @@ export default class GoogleDrive {
   //   body: fs.createReadStream(upload.path) // todo encryption
   // }
 
-
-
   upload(upload) {
+
     switch (upload.action) {
       case 'ADD':
-        return this.doAdd(upload);
+        //return this.doAdd(upload);
         break;
       case 'CHANGE':
         break;
@@ -188,4 +173,30 @@ export default class GoogleDrive {
   }
 
   changes() {}
+
+  _ensureFoldersAreCreated(basedir) {
+
+  }
+
+  _isParent(parentId, tree, index) {
+    return this.getFileInfo(parentId)
+      .then(file => {
+        if (file.name == tree[index]) {
+          if (file.parents.length && index < tree.length) {
+            return this._isParent(file.parents[0], tree, index++);
+          } else {
+            debug('parent %s (%s) matches directory tree %s', file.id, file.name, tree);
+            return true;
+          }
+        } else {
+          if (file.name == ROOT_NAME_DRIVE && (index >= tree.length || !tree.length)) {
+            debug('parent %s (%s) matches directory tree %s', file.id, file.name, tree);
+            return true;
+          } else {
+            debug('parent %s (%s) does not match directory tree %s', file.id, file.name, tree);
+            return false;
+          }
+        }
+      });
+  }
 }

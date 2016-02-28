@@ -62,9 +62,13 @@ retrieveGoogleAuth().then(bundle => {
   console.log(bundle);
 
   gDrive = new GoogleDrive({
-    watchHomeDir: WATCH_HOMEDIR
+    watchHomeDir: WATCH_HOMEDIR,
     auth: bundle.auth
   });
+
+  gDrive.getFileIdByPath('/kaka')
+  .then(found => console.log('found!', found))
+  .catch(e => console.log('bean err', e));
 
 
 
