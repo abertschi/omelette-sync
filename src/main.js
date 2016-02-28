@@ -66,18 +66,21 @@ retrieveGoogleAuth().then(bundle => {
     auth: bundle.auth
   });
 
-  gDrive.getFileIdByPath('/kaka')
-  .then(found => console.log('found!', found))
+  // gDrive.getFileIdByPath('/kaka')
+  // .then(found => console.log('found!', found))
+  // .catch(e => console.log('bean err', e));
+
+  gDrive.createFoldersByPath('/bee/bar/test/test2')
+  .then(found => console.log('done!', found))
   .catch(e => console.log('bean err', e));
 
 
-
-  watcher.watch()
-    .onValue(change => {
-      Storage.setItem('lastupdate', change.timestamp);
-      debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
-      queue.push(change);
-    });
+  // watcher.watch()
+  //   .onValue(change => {
+  //     Storage.setItem('lastupdate', change.timestamp);
+  //     debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
+  //     queue.push(change);
+  //   });
 
 
 });
