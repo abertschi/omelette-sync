@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "DEBUG=bean:app,-bean:watcher:fswatch:raw ./node_modules/.bin/babel-node src/main.js --max_old_space_size=500",
+    "start": "DEBUG=bean:app ./node_modules/.bin/babel-node src/main.js --max_old_space_size=500",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Andrin Bertschi",

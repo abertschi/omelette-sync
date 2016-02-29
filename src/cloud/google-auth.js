@@ -13,7 +13,7 @@ let debug = require('debug')('bean-google-auth');
 //const TOKEN_DIR = (process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE) + '/.credentials/';
 //const TOKEN_PATH = TOKEN_DIR + 'token.json';
 
-const CLIENT_SECRET = require('./../client_secret.json');
+const CLIENT_SECRET = require('./../../client_secret.json');
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
 class GoogleAuth {

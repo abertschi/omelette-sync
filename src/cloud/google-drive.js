@@ -21,47 +21,98 @@ export default class GoogleDrive {
     });
 
     this.drive = google.drive('v3');
-
   }
 
-  doAdd(upload) {
-    let options = {
-      resource: {
-        name: path.basename(upload.path)
-      },
-      media: {
-        body: fs.createReadStream(upload.path) // todo encryption
-      },
-      fields: 'id'
-    };
+  move(fromPath, toPath) {
+  }
 
-    return Promise
-      .promisify(this.drive.files.create)(options)
-      .then(response => {
-        return response;
+  remove(location) {
+    return this.getFileMetaByPath(location)
+      .catch(e => {
+        debug('Path %s not existing', location, JSON.stringify(e));
+        return;
       })
-      .catch(function(err) {
-        console.log('err', err);
+      .then(result => {
+        if (!result || !result.id)
+          return;
+
+        let options = {
+          fileId: result.id,
+          fields: 'id'
+        };
+
+        debug('Deleting from %s', location);
+        return Promise.promisify(this.drive.files.delete)(options);
+      }).then(result => {
+        result = result || {};
+        result.path = location;
+        return result;
+      });
+  }
+
+  upload(sourcePath, targetPath) {
+    return Promise.promisify(fs.stat)(sourcePath)
+      .then(stats => {
+        if (stats.isFile()) {
+          return path.dirname(targetPath);
+        } else {
+          return targetPath;
+        }
+      })
+      .then(targetDirs => {
+        return this.createFoldersByPath(targetDirs)
+          .then(parentId => {
+            let options = {
+              resource: {
+                name: path.basename(targetPath),
+                parents: [parentId]
+              },
+              media: {
+                body: fs.createReadStream(sourcePath) // todo encryption
+              },
+              fields: 'id'
+            };
+
+            debug('Uploading %s to %s', sourcePath, targetPath);
+            return Promise.promisify(this.drive.files.create)(options)
+              .then(response => {
+                if (response.id) {
+                  response.path = targetPath;
+                  response.parents = [parentId];
+                }
+                return response;
+              });
+          });
       });
   }
 
   getFileMetaByPath(directory) {
     let parents = directory.split('/').filter(a => a.trim() != '');
+    let searchOptions = {
+      onRoot: parents.length === 1
+    };
     let basename = parents.pop();
     let parentDirectories = parents.reverse()
 
-    return Promise.resolve(this.search(basename)
+    return Promise.resolve(this.search(basename, searchOptions)
       .then(found => {
         let foundFiles = found.files;
         if (foundFiles.length == 1) {
           // only 1 file found. No futher search necessary.
-          return foundFiles[0].id;
-        } else if (searchResults.files.length > 1) {
+          return {
+            id: foundFiles[0].id
+          }
+        } else if (foundFiles.length > 1) {
           return this._findMatchingParent(foundFiles, parentDirectories);
         } else {
           throw new Error(`No file found with path ${directory}`);
         }
-      }));
+      }))
+      .then(found => {
+        found.path = directory;
+        found.name = basename;
+        return found;
+      });
   }
 
   getFileMeta(fileId) {
@@ -87,7 +138,7 @@ export default class GoogleDrive {
     let trashed = options.includeTrashed ? true : false;
     options.q = options.q + ` and trashed = ${trashed}`;
 
-    debug(options);
+    debug('Searching for %s', name);
     return Promise.promisify(this.drive.files.list)(options);
   }
 
@@ -99,22 +150,6 @@ export default class GoogleDrive {
   // media: {
   //   body: fs.createReadStream(upload.path) // todo encryption
   // }
-
-  upload(upload) {
-
-    switch (upload.action) {
-      case 'ADD':
-        //return this.doAdd(upload);
-        break;
-      case 'CHANGE':
-        break;
-      case 'REMOVE':
-        break;
-      case 'MOVE':
-        break;
-      default:
-    }
-  }
 
   changes() {}
 
@@ -162,6 +197,7 @@ export default class GoogleDrive {
         if (parentId)
           options.resource.parents = [parentId];
 
+        debug('Creating folder %s', folderName);
         return Promise.promisify(this.drive.files.create)(options);
       });
   }
@@ -192,17 +228,21 @@ export default class GoogleDrive {
         return Bacon
           .fromPromise(this._followParents(parentId, parentDirectories))
           .filter(found => found)
-          .flatMap([new Bacon.Next(f), new Bacon.End()]);
+          .flatMap(() => Bacon.fromArray([new Bacon.Next(file), new Bacon.End()]));
       })
       .fold([], (array, file) => {
         array.push(file);
         return array;
       })
       .flatMap(array => {
+        debug(array);
         if (!array.length) {
-          return Bacon.once(new Bacon.Error(`No file found with path ${directory}`));
+          return Bacon.once(new Bacon.Error(`No file found with parents [${parentDirectories}]`));
         } else {
-          return Bacon.once(array[0]);
+          let file = array[0];
+          return Bacon.once({
+            id: file.id,
+          });
         }
       })
       .firstToPromise();
@@ -213,13 +253,14 @@ export default class GoogleDrive {
       .then(file => {
         if (file.name == directories[index]) {
           if (file.parents.length && index < directories.length) {
-            return this._followParents(file.parents[0], directories, index++);
+            index++
+            return this._followParents(file.parents[0], directories, index);
           } else {
             debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
             return true;
           }
         } else {
-          if (file.name == ROOT_NAME_DRIVE && (index >= directories.length || !directories.length)) {
+          if (!file.parents && (index == directories.length || !directories.length)) {
             debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
             return true;
           } else {
@@ -228,5 +269,9 @@ export default class GoogleDrive {
           }
         }
       });
+  }
+
+  _splitIntoDirs(path) {
+    return path.split('/').filter(a => a.trim() != '');
   }
 }

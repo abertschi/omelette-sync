@@ -3,13 +3,14 @@ import Storage from './storage.js';
 import UploadQueue from './upload-queue.js';
 let debug = require('debug')('bean:app');
 import colors from 'colors';
-import googleAuth from './google-auth.js';
+
 import readline from 'readline';
 import Q from 'Q';
 import Bacon from 'baconjs';
 import fs from 'fs';
-import retrieveGoogleAuth from './retrieve-google-auth.js';
-import GoogleDrive from './google-drive.js';
+
+import getGoogleAuthToken from './cloud/get-google-auth-token.js';
+import GoogleDrive from './cloud/google-drive.js';
 
 process.on('SIGINT', function() {
   Storage.setItem('lastrun', new Date());
@@ -55,32 +56,25 @@ watcher.on('delta-done', () => {
 });
 
 let queue = new UploadQueue();
-let gDrive;
+let drive;
 
-retrieveGoogleAuth().then(bundle => {
+getGoogleAuthToken().then(bundle => {
 
-  console.log(bundle);
-
-  gDrive = new GoogleDrive({
-    watchHomeDir: WATCH_HOMEDIR,
+  drive = new GoogleDrive({
     auth: bundle.auth
   });
 
-  // gDrive.getFileIdByPath('/kaka')
-  // .then(found => console.log('found!', found))
-  // .catch(e => console.log('bean err', e));
-
-  gDrive.createFoldersByPath('/bee/bar/test/test2')
+  drive.upload('/Users/abertschi/Dropbox/tmp/haha', '/jana/test/haha')
   .then(found => console.log('done!', found))
   .catch(e => console.log('bean err', e));
 
 
-  // watcher.watch()
-  //   .onValue(change => {
-  //     Storage.setItem('lastupdate', change.timestamp);
-  //     debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
-  //     queue.push(change);
-  //   });
+  watcher.watch()
+    .onValue(change => {
+      Storage.setItem('lastupdate', change.timestamp);
+      debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
+      queue.push(change);
+    });
 
 
 });
@@ -100,7 +94,7 @@ function running() {
         firstUpload = false;
         let upload = queue.get();
         debug('Progressing next upload: %s %s', upload.action, upload.path);
-        gDrive.upload(upload);
+        //drive.upload(upload);
       }
     running();
   }, 100);

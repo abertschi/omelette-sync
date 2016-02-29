@@ -1,7 +1,3 @@
-import Watcher from './watcher.js';
-import Storage from './storage.js';
-import UploadQueue from './upload-queue.js';
-let debug = require('debug')('bean:app');
 import colors from 'colors';
 import googleAuth from './google-auth.js';
 import readline from 'readline';
@@ -9,6 +5,7 @@ import Q from 'Q';
 import Bacon from 'baconjs';
 import fs from 'fs';
 
+let debug = require('debug')('bean:app');
 
 const TOKEN_DIR = (process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE) + '/.credentials/';
 const TOKEN_PATH = TOKEN_DIR + 'token.json';
