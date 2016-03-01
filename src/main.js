@@ -45,12 +45,12 @@ let watcher = new Watcher({
   type: 'fswatch'
 });
 
-watcher.on('init-done', () => {
+watcher.on('index-created', () => {
   Storage.setItem('init-successful', new Date());
   debug('Initializing is done');
 });
 
-watcher.on('delta-done', () => {
+watcher.on('changes-since-done', () => {
   Storage.setItem('delta-done', new Date());
   debug('Fetching delta is done');
 });
@@ -64,24 +64,19 @@ getGoogleAuthToken().then(bundle => {
     auth: bundle.auth
   });
 
+  watcher.watch();
+
+  watcher.on('change', change => {
+    Storage.setItem('lastupdate', change.timestamp);
+    debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
+    queue.push(change);
+  });
+
   drive.upload('/Users/abertschi/Dropbox/tmp/haha', '/jana/test/haha')
-  .then(found => console.log('done!', found))
-  .catch(e => console.log('bean err', e));
-
-
-  watcher.watch()
-    .onValue(change => {
-      Storage.setItem('lastupdate', change.timestamp);
-      debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
-      queue.push(change);
-    });
-
+    .then(found => console.log('done!', found))
+    .catch(e => console.log('bean err', e));
 
 });
-
-
-
-
 
 running();
 
@@ -90,12 +85,12 @@ let firstUpload;
 function running() {
   setTimeout(function() {
 
-      if (queue.getSize()) {
-        firstUpload = false;
-        let upload = queue.get();
-        debug('Progressing next upload: %s %s', upload.action, upload.path);
-        //drive.upload(upload);
-      }
+    if (queue.getSize()) {
+      firstUpload = false;
+      let upload = queue.get();
+      debug('Progressing next upload: %s %s', upload.action, upload.path);
+      //drive.upload(upload);
+    }
     running();
   }, 100);
 }

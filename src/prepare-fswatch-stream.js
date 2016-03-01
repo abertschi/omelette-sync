@@ -2,12 +2,12 @@ import Bacon from 'baconjs';
 import db from './db.js';
 import getFromIndexById from './index/get-from-index-by-id.js';
 import getFromIndexByPath from './index/get-from-index-by-path.js';
-import existsOnDisk from './exists-on-disk.js';
-import getFileStats from './get-file-stats.js';
-import {createBufferdStream} from './stream-helpers.js';
+
+import {createBufferdStream} from './util/stream-helpers.js';
+import existsOnDisk from './util/exists-on-disk.js';
+import getFileStats from './util/get-file-stats.js';
 
 let debug = require('debug')('bean:watcher');
-
 
 export default function prepareFsWatchStream(file) {
 

@@ -1,5 +1,4 @@
 import Bacon from 'baconjs';
-import db from './db.js';
 
 export function createBufferdStream(stream, size) {
   return stream

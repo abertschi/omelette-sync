@@ -1,18 +1,22 @@
 import childProcess from 'child_process';
 import Bacon from 'baconjs';
-import getFileStats from './../get-file-stats.js';
+import getFileStats from './../util/get-file-stats.js';
 let debug = require('debug')('bean:watcher:fswatch');
 let debugRaw = require('debug')('bean:watcher:fswatch:raw');
 var path = require('path');
 import {
   createBufferdStream
-} from './../stream-helpers.js';
+} from './../util/stream-helpers.js';
 import username from 'username';
 
 
-export default class FsWatchWatcher {
+export default class FsWatchWatcherOsx {
 
   constructor(options = {}) {
+    if (!options.directory) {
+      throw new Error('Directory not specified');
+    }
+
     this.directory = options.directory;
     this.watchSpawn = null;
   }

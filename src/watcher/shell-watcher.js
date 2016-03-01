@@ -6,6 +6,10 @@ var path = require('path');
 export default class ShellScanner {
 
   constructor(options) {
+    if (!options.directory) {
+      throw new Error('Directory not specified');
+    }
+
     this.directory = options.directory;
     this.watchSpawn = null;
     this.interval = options.interval | 1;

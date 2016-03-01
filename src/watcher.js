@@ -4,16 +4,18 @@ import colors from 'colors';
 import Bacon from 'baconjs';
 import db from './db.js';
 import addToIndex from './index/add-to-index.js';
-import initIndex from './index/init-index.js';
+import emptyIndex from './index/empty-index.js';
 import prepareFsWatchStream from './prepare-fswatch-stream.js';
 import prepareShellStream from './prepare-shell-stream.js';
-import {createBufferdStream} from './stream-helpers.js';
+import {
+  createBufferdStream
+} from './util/stream-helpers.js';
 import {
   listChanges,
   listRecursive
 } from './offline/shell-list-files.js'
 import ShellWatcher from './watcher/shell-watcher.js';
-import FsWatchWatcher from './watcher/fswatch-watcher.js';
+import FsWatchWatcherOsx from './watcher/fswatch-watcher-osx.js';
 import os from 'os';
 import EventEmitter from 'events';
 
@@ -24,53 +26,74 @@ export default class Watcher extends EventEmitter {
   constructor(options = {}) {
     super();
     this.directory = options.directory;
-    this.init = options.init || false;
-    this.since = options.since;
     this.type = options.type || os.type();
     this.watcher = null;
+
+    if (options.init) {
+      this.indexEverything();
+    } else if (options.since) {
+      this.getChangesSince(options.since);
+    }
+  }
+
+  indexEverything() {
+    debug(`Creating new index for ${this.directory}`);
+    emptyIndex().flatMap(() => {
+        let stream = listRecursive(this.directory)
+          .flatMap(file => {
+            file.action = 'ADD';
+            return file;
+          });
+        stream.onEnd(() => {
+          this.emit('index-created');
+        });
+        return stream;
+      })
+      .flatMap(file => this._enrichChange(file))
+      .onValue(file => this._emitChange(file));
+  }
+
+  getChangesSince(date) {
+    debug(`Searching for changes since [%s] for ${this.directory}`, date);
+    listChanges(this.directory, date).flatMap(file => {
+        let shell = prepareShellStream(file);
+        shell.onEnd(() => {
+          this.emit('changes-since-done');
+        });
+        return shell;
+      })
+      .flatMap(file => this._enrichChange(file))
+      .onValue(file => this._emitChange(file));
   }
 
   watch() {
-    return Bacon.once()
-      .flatMap(() => {
-        if (this.init) {
-          debug('Creating new index ...');
-          return initIndex()
-            .flatMap(_ => {
-              let stream =  listRecursive(this.directory)
-                .flatMap(file => {
-                  file.action = 'ADD';
-                  return file;
-                });
-                stream.onEnd(() => {
-                  this.emit('init-done');
-                });
-                return stream;
-            });
-        } else {
-          return listChanges(this.directory, this.since)
-            .flatMap(file => {
-              let shell = prepareShellStream(file);
-              shell.onEnd(() => {
-                this.emit('last-changes-done');
-              });
-              return shell;
-            })
-        }
-      }).doAction(f => debug(f))
-      .merge(this._getWatcherStream())
-      .flatMap(file => {
-        debug('Processing change %s (%s) [%s]', file.path, file.action, file.id);
-        return addToIndex(file, this.directory)
-          .map((comment) => {
-            debug('Index updated for %s', file.path);
-            return file;
-          })
+    return this._getWatcherStream()
+      .flatMap(file => this._enrichChange(file))
+      .onValue(file => this._emitChange(file));
+  }
+
+  unwatch() {
+    debug('Unwatching %s', this.directory);
+    if (this.watcher) {
+      this.watcher.stopWatch();
+    }
+  }
+
+  _enrichChange(file) {
+    debug('Processing change %s (%s) [%s]', file.path, file.action, file.id);
+    return addToIndex(file, this.directory)
+      .map(() => {
+        debug('Index updated for %s', file.path);
+        return file;
       })
       .map(file => {
         file.timestamp = new Date();
         return file;
-      })
+      });
+  }
+
+  _emitChange(file) {
+    this.emit('change', file);
   }
 
   _getWatcherStream() {
@@ -85,22 +108,15 @@ export default class Watcher extends EventEmitter {
           return prepareShellStream(file);
         });
 
-    } else if(this.type == 'fswatch' || this.type == 'Darwin') {
-      debug('Using FsWatchWatcher to observe directory changes');
-      this.watcher = new FsWatchWatcher({
+    } else if (this.type == 'fswatch' || this.type == 'Darwin') {
+      debug('Using FsWatchWatcherOsx to observe directory changes');
+      this.watcher = new FsWatchWatcherOsx({
         directory: this.directory
       });
 
       return this.watcher.watch().flatMap(file => {
-          return prepareFsWatchStream(file);
-        });
-    }
-  }
-
-  unwatch() {
-    debug('Unwatching %s', this.directory);
-    if (this.watcher) {
-      this.watcher.stopWatch();
+        return prepareFsWatchStream(file);
+      });
     }
   }
 }
