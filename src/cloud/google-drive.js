@@ -13,8 +13,11 @@ export default class GoogleDrive {
 
   constructor(options = {}) {
     this.auth = options.auth;
-    this.rootDir = options.rootDir || '/';
-    this.generatedIds = [];
+    if (options.basedir) {
+      this.basedir = options.basedir.endsWith('/') ? '' : '/';
+    } else {
+      this.basedir = '/'
+    }
 
     google.options({
       auth: this.auth
@@ -25,7 +28,13 @@ export default class GoogleDrive {
 
   move(fromPath, toPath) {}
 
-  remove(location) {
+  _qualifyDirectory(directory){
+    return this.basedir.concat(directory);
+  }
+
+  removeByPath(location) {
+    location = this._qualifyDirectory(location);
+
     return this.getFileMetaByPath(location)
       .catch(e => {
         debug('Path %s not existing', location, JSON.stringify(e));
@@ -58,6 +67,8 @@ export default class GoogleDrive {
   }
 
   upload(sourcePath, targetPath) {
+    targetPath = this._qualifyDirectory(targetPath);
+
     return Promise.promisify(fs.stat)(sourcePath)
       .then(stats => {
         return {
@@ -112,6 +123,8 @@ export default class GoogleDrive {
   }
 
   getFileMetaByPath(directory) {
+    directory = this._qualifyDirectory(directory);
+
     let parents = directory.split('/').filter(a => a.trim() != '');
     let searchOptions = {
       onRoot: parents.length === 1
@@ -179,6 +192,8 @@ export default class GoogleDrive {
   changes() {}
 
   createFoldersByPath(basedir) {
+    basedir = this._qualifyDirectory(basedir);
+
     let childdirs = basedir.split('/').filter(a => a.trim() != '');
     debug('Creating folders [%s]', childdirs);
 
