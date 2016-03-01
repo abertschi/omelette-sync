@@ -23,8 +23,7 @@ export default class GoogleDrive {
     this.drive = google.drive('v3');
   }
 
-  move(fromPath, toPath) {
-  }
+  move(fromPath, toPath) {}
 
   remove(location) {
     return this.getFileMetaByPath(location)
@@ -36,13 +35,7 @@ export default class GoogleDrive {
         if (!result || !result.id)
           return;
 
-        let options = {
-          fileId: result.id,
-          fields: 'id'
-        };
-
-        debug('Deleting from %s', location);
-        return Promise.promisify(this.drive.files.delete)(options);
+        return this.removeById(result.id);
       }).then(result => {
         result = result || {};
         result.path = location;
@@ -50,38 +43,70 @@ export default class GoogleDrive {
       });
   }
 
+  removeById(id) {
+    let options = {
+      fileId: id,
+      fields: 'id'
+    };
+    debug('Deleting %s', id);
+    return Promise.promisify(this.drive.files.delete)(options)
+      .then(removed => {
+        return {
+          id: id
+        }
+      });
+  }
+
   upload(sourcePath, targetPath) {
     return Promise.promisify(fs.stat)(sourcePath)
       .then(stats => {
-        if (stats.isFile()) {
-          return path.dirname(targetPath);
-        } else {
-          return targetPath;
-        }
+        return {
+          dirname: path.dirname(targetPath),
+          basename: path.basename(targetPath),
+          isDir: stats.isDirectory(),
+          stats: stats
+        };
       })
-      .then(targetDirs => {
-        return this.createFoldersByPath(targetDirs)
+      .then(targetInfo => {
+        return this.createFoldersByPath(targetInfo.dirname)
           .then(parentId => {
-            let options = {
-              resource: {
-                name: path.basename(targetPath),
-                parents: [parentId]
-              },
-              media: {
-                body: fs.createReadStream(sourcePath) // todo encryption
-              },
-              fields: 'id'
-            };
+            targetInfo.parentId = parentId;
+            return targetInfo;
+          })
+      })
+      .then(targetInfo => {
+        return this.search(targetInfo.basename, {
+            withParentId: targetInfo.parentId
+          })
+          .then(found => {
+            if (found.files.length) {
+              return this.removeById(found.files[0].id)
+                .then(() => targetInfo);
+            } else {
+              return targetInfo;
+            }
+          });
+      })
+      .then(targetInfo => {
+        let options = {
+          resource: {
+            name: targetInfo.basename,
+            parents: [targetInfo.parentId]
+          },
+          media: {
+            body: fs.createReadStream(sourcePath) // todo encryption
+          },
+          fields: 'id'
+        };
 
-            debug('Uploading %s to %s', sourcePath, targetPath);
-            return Promise.promisify(this.drive.files.create)(options)
-              .then(response => {
-                if (response.id) {
-                  response.path = targetPath;
-                  response.parents = [parentId];
-                }
-                return response;
-              });
+        debug('Uploading %s to %s', sourcePath, targetPath);
+        return Promise.promisify(this.drive.files.create)(options)
+          .then(response => {
+            if (response.id) {
+              response.path = targetPath;
+              response.parents = [targetInfo.parentId];
+            }
+            return response;
           });
       });
   }
@@ -95,19 +120,19 @@ export default class GoogleDrive {
     let parentDirectories = parents.reverse()
 
     return Promise.resolve(this.search(basename, searchOptions)
-      .then(found => {
-        let foundFiles = found.files;
-        if (foundFiles.length == 1) {
-          // only 1 file found. No futher search necessary.
-          return {
-            id: foundFiles[0].id
+        .then(found => {
+          let foundFiles = found.files;
+          if (foundFiles.length == 1) {
+            // only 1 file found. No futher search necessary.
+            return {
+              id: foundFiles[0].id
+            }
+          } else if (foundFiles.length > 1) {
+            return this._findMatchingParent(foundFiles, parentDirectories);
+          } else {
+            throw new Error(`No file found with path ${directory}`);
           }
-        } else if (foundFiles.length > 1) {
-          return this._findMatchingParent(foundFiles, parentDirectories);
-        } else {
-          throw new Error(`No file found with path ${directory}`);
-        }
-      }))
+        }))
       .then(found => {
         found.path = directory;
         found.name = basename;
