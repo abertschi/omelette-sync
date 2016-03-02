@@ -4,7 +4,6 @@ import path from 'path';
 let debug = require('debug')('bean:index');
 
 export default function addToIndex(file, rootDirectory) {
-  debug('Adding %s to index [%s]', file.path, file.action);
   switch (file.action) {
     case 'ADD':
     case 'MOVE':

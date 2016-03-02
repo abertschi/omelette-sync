@@ -3,9 +3,9 @@ import db from '../db.js';
 import path from 'path';
 let debug = require('debug')('bean:index');
 
-export default function getChildrenOfDirectoryFromIndex(dir) {
-  const SQL = 'SELECT file_id, path, is_dir FROM DIRECTORY_INDEX WHERE path LIKE ? and file_id != ?';
+const SQL = 'SELECT file_id, path, is_dir FROM DIRECTORY_INDEX WHERE path LIKE ? and file_id != ?';
 
+export default function getChildrenOfDirectoryFromIndex(dir) {
   return Bacon.fromBinder(sink => {
     db.all(SQL, [dir.path + '%', dir.id], (err, rows) => {
       let result = new Array();
