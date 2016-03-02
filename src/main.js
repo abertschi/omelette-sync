@@ -26,7 +26,7 @@ let initSuccessful = Storage.getItem('init-successful');
 let init = true;
 
 process.on('unhandledRejection', function(error, promise) {
-  console.error("UNHANDLED REJECTION", error.stack);
+  console.error("UNHANDLED REJECTION", error, error.stack);
 });
 
 if (lastupdate) {
@@ -44,8 +44,8 @@ if (lastrun && initSuccessful) {
 const WATCH_HOMEDIR = '/Users/abertschi/Dropbox/tmp';
 let watcher = new Watcher({
   directory: WATCH_HOMEDIR,
-  since: lastrun,
-  init: init,
+  // since: lastrun,
+  // init: init,
   type: 'fswatch'
 });
 
@@ -70,13 +70,14 @@ getGoogleAuthToken().then(bundle => {
   });
 
   watcher.watch();
+  running();
 
   watcher.on('change', change => {
     debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
     queue.push(change);
   });
 });
-running();
+
 
 function running() {
   setTimeout(function() {
@@ -100,11 +101,14 @@ queue.on('queue-not-empty', () => {
 
 
 async function fetching() {
+  debug('fetching');
   try {
+    debug(empty);
     if (!empty) {
       let size = await queue.getSize();
       if (size) {
         let upload = await queue.pop();
+        debug(upload);
         if (upload) {
           let target = upload.path.replace(WATCH_HOMEDIR, '');
           switch (upload.action) {
