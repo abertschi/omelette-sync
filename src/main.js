@@ -25,6 +25,10 @@ let lastupdate = Storage.getItem('lastupdate');
 let initSuccessful = Storage.getItem('init-successful');
 let init = true;
 
+process.on('unhandledRejection', function(error, promise) {
+  console.error("UNHANDLED REJECTION", error.stack);
+});
+
 if (lastupdate) {
   lastrun = lastupdate;
 }
@@ -61,36 +65,51 @@ let drive;
 getGoogleAuthToken().then(bundle => {
 
   drive = new GoogleDrive({
-    auth: bundle.auth
+    auth: bundle.auth,
+    basedir: '/omelettes/'
   });
 
   watcher.watch();
 
   watcher.on('change', change => {
-    Storage.setItem('lastupdate', change.timestamp);
     debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
     queue.push(change);
   });
-
-  drive.upload('/Users/abertschi/Dropbox/tmp/haha', '/jana/test/haha')
-    .then(found => console.log('done!', found))
-    .catch(e => console.log('bean err', e));
-
 });
-
 running();
-
-let firstUpload;
 
 function running() {
   setTimeout(function() {
-
-    if (queue.getSize()) {
-      firstUpload = false;
-      let upload = queue.get();
-      debug('Progressing next upload: %s %s', upload.action, upload.path);
-      //drive.upload(upload);
-    }
+    fetching();
     running();
-  }, 100);
+  }, 5000);
+}
+
+
+async function fetching() {
+  try {
+    let size = await queue.getSize();
+    if (size) {
+      let upload = await queue.pop();
+      if (upload) {
+        let target = upload.path.replace(WATCH_HOMEDIR, '');
+        switch (upload.action) {
+          case 'ADD':
+          case 'CHANGE':
+            drive.upload(upload.path, target)
+              .then(done => queue.flagAsDone(upload))
+            .catch(err => debug('ERR', err, err.stack));
+            break;
+          case 'REMOVE':
+            drive.removeByPath(target)
+              .then(done => queue.flagAsDone(upload))
+            .catch(err => debug('ERR', err, err.stack));
+            break;
+          default:
+        }
+      }
+    }
+  } catch (e) {
+    debug(e);
+  }
 }

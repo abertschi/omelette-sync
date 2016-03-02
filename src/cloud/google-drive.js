@@ -7,14 +7,14 @@ let debug = require('debug')('bean:app');
 
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const ROOT_NAME_DRIVE = 'My Drive';
-const BACON_SEQUENTIAL_WAIT = 150;
+const BACON_SEQUENTIAL_WAIT = 10;
 
 export default class GoogleDrive {
 
   constructor(options = {}) {
     this.auth = options.auth;
     if (options.basedir) {
-      this.basedir = options.basedir.endsWith('/') ? '' : '/';
+      this.basedir = options.basedir.endsWith('/') ? options.basedir : options.basedir + '/';
     } else {
       this.basedir = '/'
     }
@@ -28,8 +28,12 @@ export default class GoogleDrive {
 
   move(fromPath, toPath) {}
 
-  _qualifyDirectory(directory){
-    return this.basedir.concat(directory);
+  _qualifyDirectory(directory) {
+    if (directory.startsWith('/')) {
+      return this.basedir.concat(directory.substr(1));
+    } else {
+      return this.basedir.concat(directory);
+    }
   }
 
   removeByPath(location) {
@@ -74,7 +78,7 @@ export default class GoogleDrive {
         return {
           dirname: path.dirname(targetPath),
           basename: path.basename(targetPath),
-          isDir: stats.isDirectory(),
+          isDir: !stats.isFile(),
           stats: stats
         };
       })
@@ -86,39 +90,46 @@ export default class GoogleDrive {
           })
       })
       .then(targetInfo => {
-        return this.search(targetInfo.basename, {
-            withParentId: targetInfo.parentId
-          })
-          .then(found => {
-            if (found.files.length) {
-              return this.removeById(found.files[0].id)
-                .then(() => targetInfo);
-            } else {
-              return targetInfo;
-            }
-          });
-      })
-      .then(targetInfo => {
-        let options = {
-          resource: {
-            name: targetInfo.basename,
-            parents: [targetInfo.parentId]
-          },
-          media: {
-            body: fs.createReadStream(sourcePath) // todo encryption
-          },
-          fields: 'id'
-        };
+        if (targetInfo.isDir) {
+          return {
+            id: targetInfo.parentId,
+            path: targetPath
+          }
+        } else {
+          return this.search(targetInfo.basename, {
+              withParentId: targetInfo.parentId
+            })
+            .then(found => {
+              if (found.files.length) {
+                return this.removeById(found.files[0].id)
+                  .then(() => targetInfo);
+              } else {
+                return targetInfo;
+              }
+            })
+            .then(targetInfo => {
+              let options = {
+                resource: {
+                  name: targetInfo.basename,
+                  parents: [targetInfo.parentId]
+                },
+                media: {
+                  body: fs.createReadStream(sourcePath) // todo encryption
+                },
+                fields: 'id'
+              };
 
-        debug('Uploading %s to %s', sourcePath, targetPath);
-        return Promise.promisify(this.drive.files.create)(options)
-          .then(response => {
-            if (response.id) {
-              response.path = targetPath;
-              response.parents = [targetInfo.parentId];
-            }
-            return response;
-          });
+              debug('Uploading %s to %s', sourcePath, targetPath);
+              return Promise.promisify(this.drive.files.create)(options)
+                .then(response => {
+                  if (response.id) {
+                    response.path = targetPath;
+                    response.parents = [targetInfo.parentId];
+                  }
+                  return response;
+                });
+            });
+        }
       });
   }
 
@@ -168,8 +179,10 @@ export default class GoogleDrive {
     }
     if (parms.nextPageToken)
       options.pageToken = parms.nextPageToken;
+
     if (parms.onRoot)
       options.q = options.q + " and 'root' in parents";
+
     if (parms.withParentId)
       options.q = options.q + `and '${parms.withParentId}' in parents`;
 
@@ -179,15 +192,6 @@ export default class GoogleDrive {
     debug('Searching for %s', name);
     return Promise.promisify(this.drive.files.list)(options);
   }
-
-
-  //
-  // resource: {
-  //   title: path.basename(upload.path);
-  // },
-  // media: {
-  //   body: fs.createReadStream(upload.path) // todo encryption
-  // }
 
   changes() {}
 
@@ -206,6 +210,7 @@ export default class GoogleDrive {
 
   createFolder(folderName, parentId = null) {
     let searchArgs = {};
+
     if (parentId)
       searchArgs.withParentId = parentId;
     else
@@ -260,7 +265,7 @@ export default class GoogleDrive {
   _findMatchingParent(files, parentDirectories) {
     return Bacon
       .sequentially(BACON_SEQUENTIAL_WAIT, files)
-      .filter(file => file.parents.length)
+      .filter(file => file.parents && file.parents.length)
       .flatMapLatest(file => {
         // no scenario is familiar where a file has more than 1 parents
         // always stick to first parent

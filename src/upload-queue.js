@@ -1,66 +1,182 @@
-export default class ExportQueue {
+import _db from './db.js';
+var Promise = require('bluebird');
+let debug = require('debug')('bean:app');
+
+const db = Promise.promisifyAll(_db);
+
+import EventEmitter from 'events';
+
+export default class UploadQueue extends EventEmitter {
 
   constructor(init = {}) {
-
-    this.current = init.current || null;
-    Map.prototype.sort = function sortMap(sortFunc) {
-      var results = [];
-      this.forEach((value, key, map) => {
-        results.push(value);
-      });
-      return results.sort(sortFunc);
-    }
-    this.queue = init.queue ? new Map(init.queue) : new Map();
-  }
-
-  generateKey(upload) {
-    let key = {
-      action: upload.action,
-      path: upload.path
-    }
-    return JSON.stringify(key);
+    super();
   }
 
   push(change) {
-    let changeKey = this.generateKey(change);
-    if (!this.queue.has(changeKey)) {
-      if (change.action == 'MOVE') {
-        let keyOrigin = this.generateKey({
-          action: 'MOVE',
-          path: change.pathOrigin
-        });
-
-        if (this.queue.has(keyOrigin)) {
-          this.queue.delete(keyOrigin);
+    return this._hasKey(change.action, change.path)
+      .then(found => {
+        if (found) {
+          return;
+        } else if (change.action == 'MOVE') {
+          return this._hasKey(change.action, change.pathOrigin)
+            .then(found => found ? this._delete(change.action, change.path) : false);
+        } else if (change.action == 'REMOVE') {
+          return this._deleteWithinPath(change.path);
+        } else {
+          return true;
         }
-      } else if (change.action == 'REMOVE') {
-        let toDelete = [];
-        this.queue.forEach((value, key, map) => {
-          if (value.path.indexOf(change.path) > -1) {
-            toDelete.push(key);
-          }
-        });
-        toDelete.forEach(key => {
-          this.queue.delete(key);
-        });
-      }
-      this.queue.set(changeKey, change);
-    }
+      })
+      .then(add => {
+        if (add) {
+          debug('adding change %s %s to queue', change.action, change.path);
+          return this._add(change.action, change.path, change);
+        } else {
+          return;
+        }
+      });
   }
 
   getSize() {
-    return this.queue.size;
+    return this._size();
   }
 
-  get() {
-    if (this.queue.size) {
-      let changes = this.queue.sort((a, b) => a.timestamp < b.timestamp ? -1 : 1);
-      this.current = changes[0];
-      let key = this.generateKey(this.current);
-      this.queue.delete(key);
-      return this.current;
-    } else {
-      return null;
-    }
+  peekNext() {
+    return this._getOldest()
+      .then(found => {
+        if (found) {
+          this._setActiveFlag(found.action, found.path, true);
+          return found.payload;
+        } else {
+          return;
+        }
+      });
+  }
+
+  flagAsDone(change) {
+    return this._setActiveFlag(change.action, change.path, false);
+  }
+
+  pop() {
+    return this._getOldest()
+      .then(found => {
+        if (found) {
+          this._delete(found.action, found.path);
+          return found.payload;
+        } else {
+          return;
+        }
+      });
+  }
+
+  _hasKey(action, path) {
+    const QUERY = 'SELECT action from UPLOAD_QUEUE where action=? and path=?'
+
+    return db.getAsync(QUERY, [action, path])
+      .then(result => result ? true : false);
+  }
+
+  _get(action, path) {
+    const QUERY = 'SELECT json from UPLOAD_QUEUE where action=? and path=?'
+
+    return db.getAsync(QUERY, [action, path])
+      .then(result => result ? JSON.parse(result.json) : null)
+      .catch(e => {
+        debug(e);
+        return false;
+      });
+  }
+
+  _getOldest() {
+    const QUERY = 'SELECT action, path, json from UPLOAD_QUEUE ORDER BY date(timestamp) DESC Limit 1'
+
+    return db.getAsync(QUERY, [])
+      .then(result => {
+        if (result) {
+          return {
+            action: result.action,
+            path: result.path,
+            payload: JSON.parse(result.json)
+          };
+        } else {
+          return null;
+        }
+      });
+  }
+
+  _deleteWithinPath(path) {
+    const QUERY = 'DELETE FROM UPLOAD_QUEUE where path LIKE ?'
+
+    return db.getAsync(QUERY, [`${path}%`])
+      .then(result => {
+        return true;
+      })
+      .catch(e => {
+        debug(e);
+        return false;
+      });
+  }
+
+  _delete(action, path) {
+    const QUERY = 'DELETE FROM UPLOAD_QUEUE where action=? and path=?'
+
+    return db.getAsync(QUERY, [action, path])
+      .then(result => true)
+      .catch(e => {
+        debug(e, e.stack);
+        return false;
+      });
+  }
+
+  _add(action, path, payload) {
+    const QUERY = 'INSERT INTO UPLOAD_QUEUE (action, path, json) VALUES (?, ?, ?)';
+
+    return this._hasKey(action, path)
+      .then(found => {
+        return found ? this._delete(action, path) : null;
+      })
+      .then(() => {
+        return db.getAsync(QUERY, [action, path, JSON.stringify(payload)]);
+      })
+      .then(result => {
+        return true;
+      })
+      .catch(e => {
+        debug(e, e.stack);
+        return false;
+      });
+  }
+
+  _size() {
+    const QUERY = 'SELECT COUNT(*) as count FROM UPLOAD_QUEUE';
+
+    return db.getAsync(QUERY, [])
+      .then(found => found.count)
+    .catch(err => {
+      debug(err, err.stack);
+      return 0;
+    })
+  }
+
+  _setActiveFlag(action, path, flag) {
+    const QUERY = 'UPDATE UPLOAD_QUEUE SET active=? WHERE action=? and path=?';
+
+    return db.getAsync(QUERY, [flag, action, path]);
+  }
+
+  _getFlaggedAsActive() {
+    const QUERY = 'SELECT action, path, json FROM UPLOAD_QUEUE where active=?'
+
+    return db.allAsync(QUERY, [true])
+      .then(rows => {
+        let results = [];
+        if (rows) {
+          rows.forEach(row => {
+            if (row.json) {
+              results.push(JSON.parse(row.json));
+            }
+          });
+        }
+        return results;
+      });
   }
 }
