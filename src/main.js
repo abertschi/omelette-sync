@@ -85,27 +85,42 @@ function running() {
   }, 5000);
 }
 
+let empty = false;
+queue.getSize()
+  .then(size => {
+    empty = size == 0;
+  });
+queue.on('queue-empty', () => {
+  empty = true;
+});
+
+queue.on('queue-not-empty', () => {
+  empty = false;
+});
+
 
 async function fetching() {
   try {
-    let size = await queue.getSize();
-    if (size) {
-      let upload = await queue.pop();
-      if (upload) {
-        let target = upload.path.replace(WATCH_HOMEDIR, '');
-        switch (upload.action) {
-          case 'ADD':
-          case 'CHANGE':
-            drive.upload(upload.path, target)
-              .then(done => queue.flagAsDone(upload))
-            .catch(err => debug('ERR', err, err.stack));
-            break;
-          case 'REMOVE':
-            drive.removeByPath(target)
-              .then(done => queue.flagAsDone(upload))
-            .catch(err => debug('ERR', err, err.stack));
-            break;
-          default:
+    if (!empty) {
+      let size = await queue.getSize();
+      if (size) {
+        let upload = await queue.pop();
+        if (upload) {
+          let target = upload.path.replace(WATCH_HOMEDIR, '');
+          switch (upload.action) {
+            case 'ADD':
+            case 'CHANGE':
+              drive.upload(upload.path, target)
+                .then(done => queue.flagAsDone(upload))
+                .catch(err => debug('ERR', err, err.stack));
+              break;
+            case 'REMOVE':
+              drive.removeByPath(target)
+                .then(done => queue.flagAsDone(upload))
+                .catch(err => debug('ERR', err, err.stack));
+              break;
+            default:
+          }
         }
       }
     }

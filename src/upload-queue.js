@@ -33,14 +33,18 @@ export default class UploadQueue extends EventEmitter {
         } else {
           return;
         }
+      })
+      .finally(() => {
+        this._emitQueueStatus();
       });
+
   }
 
   getSize() {
     return this._size();
   }
 
-  peekNext() {
+  peek() {
     return this._getOldest()
       .then(found => {
         if (found) {
@@ -53,18 +57,36 @@ export default class UploadQueue extends EventEmitter {
   }
 
   flagAsDone(change) {
-    return this._setActiveFlag(change.action, change.path, false);
+    this._delete(change.action, change.path)
+    .then(this._emitQueueStatus());
   }
 
   pop() {
     return this._getOldest()
       .then(found => {
         if (found) {
-          this._delete(found.action, found.path);
+          this.flagAsDone(found);
           return found.payload;
         } else {
           return;
         }
+      });
+  }
+
+  getFlaggedAsActive() {
+    const QUERY = 'SELECT action, path, json FROM UPLOAD_QUEUE where active=?'
+
+    return db.allAsync(QUERY, [true])
+      .then(rows => {
+        let results = [];
+        if (rows) {
+          rows.forEach(row => {
+            if (row.json) {
+              results.push(JSON.parse(row.json));
+            }
+          });
+        }
+        return results;
       });
   }
 
@@ -163,20 +185,8 @@ export default class UploadQueue extends EventEmitter {
     return db.getAsync(QUERY, [flag, action, path]);
   }
 
-  _getFlaggedAsActive() {
-    const QUERY = 'SELECT action, path, json FROM UPLOAD_QUEUE where active=?'
-
-    return db.allAsync(QUERY, [true])
-      .then(rows => {
-        let results = [];
-        if (rows) {
-          rows.forEach(row => {
-            if (row.json) {
-              results.push(JSON.parse(row.json));
-            }
-          });
-        }
-        return results;
-      });
+  _emitQueueStatus() {
+    return this.getSize()
+      .then(size => size == 0 ? this.emit('empty-queue') : size > 0 ? this.emit('not-empty-queue') : null);
   }
 }
