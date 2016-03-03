@@ -55,19 +55,20 @@ export default class GoogleDrive extends StorageProvider {
       });
   }
 
-  getRemainingStorage() {
-    return false;
+  getStorage() {
+    throw new Error('Not yet impl.');
   }
 
-  upload(source, targetPath) {
+  upload(source, targetPath, properties = {}) {
     let fullPath = this._qualifyDirectory(targetPath);
     let dirname = path.dirname(targetPath);
     let basename = path.basename(targetPath);
 
     return Bacon.fromNodeCallback(fs, 'stat', source)
       .flatMap(stats => {
-        return Bacon.fromPromise(this.createFoldersByPath(dirname))
-          .flatMap(parentId => {
+        return Bacon.fromPromise(this.createFolder(dirname))
+          .flatMap(properties => {
+            let parentId = properties.id;
             if (stats.isFile()) {
               return Bacon.fromPromise(this.search(basename))
                 .flatMap(search => {
@@ -78,37 +79,64 @@ export default class GoogleDrive extends StorageProvider {
                     return Bacon.once();
                   }
                 })
-                .flatMap(() => Bacon.try(source instanceof stream.Readable ? source : fs.createReadStream(source)))
-                .map(body => {
-                  return options = {
-                    resource: {
-                      name: basename,
-                      parents: [parentId]
-                    },
-                    media: {
-                      body: body,
-                    },
-                    fields: 'id'
-                  };
-                })
-                .flatMap(upload => {
-                  let exec = Promise.promisify(this.drive.files.create)(upload);
-                  return this._executeRequest(exec);
-                });
+                .flatMap(() => this._uploadWithParentId(source, basename, parentId));
             } else {
-              return Bacon.fromPromise(this.createFolder(basename, parentId));
+              return Bacon.fromPromise(this.createSingleFolder(basename, parentId));
             }
           })
           .map(response => {
-            if (response) {
-              response.path = targetPath;
-              response.parents = [parentId];
+            return {
+              properties: {
+                id: response ? response.id || null : null
+              }
             }
-            return response;
           });
       })
       .endOnError()
       .toPromise();
+  }
+
+  createFolder(basedir) {
+    basedir = this._qualifyDirectory(basedir);
+
+    let childdirs = basedir.split('/').filter(a => a.trim() != '');
+    debug('Creating folders [%s]', childdirs);
+
+    return this._createFoldersRecursively(null, childdirs)
+      .then(success => {
+        debug('folders %s created. child id: %s', basedir, success.id);
+        return {
+          properties: {
+            id: success.id
+          }
+        };
+      });
+  }
+
+  _uploadWithParentId(source, name, parentId) {
+    return Bacon.once()
+      .flatMap(() => Bacon.try(source instanceof stream.Readable ? source : fs.createReadStream(source)))
+      .map(body => {
+        return options = {
+          resource: {
+            name: name,
+            parents: [parentId]
+          },
+          media: {
+            body: body,
+          },
+          fields: 'id'
+        };
+      })
+      .flatMap(upload => {
+        let exec = Promise.promisify(this.drive.files.create)(upload);
+        return this._executeRequest(exec)
+          .map(result => {
+            return {
+              id: result
+            };
+          });
+      });
   }
 
   //   return Promise.promisify(fs.stat)(sourcePath)
@@ -121,7 +149,7 @@ export default class GoogleDrive extends StorageProvider {
   //       };
   //     })
   //     .then(targetInfo => {
-  //       return this.createFoldersByPath(targetInfo.dirname)
+  //       return this.createFolder(targetInfo.dirname)
   //         .then(parentId => {
   //           targetInfo.parentId = parentId;
   //           return targetInfo;
@@ -248,20 +276,9 @@ export default class GoogleDrive extends StorageProvider {
 
   changes() {}
 
-  createFoldersByPath(basedir) {
-    basedir = this._qualifyDirectory(basedir);
 
-    let childdirs = basedir.split('/').filter(a => a.trim() != '');
-    debug('Creating folders [%s]', childdirs);
 
-    return this._createFoldersRecursively(null, childdirs)
-      .then(success => {
-        debug('folders %s created. child id: %s', basedir, success.id);
-        return success.id;
-      });
-  }
-
-  createFolder(folderName, parentId = null) {
+  createSingleFolder(folderName, parentId = null) {
     let searchArgs = {};
 
     if (parentId)
@@ -303,7 +320,7 @@ export default class GoogleDrive extends StorageProvider {
   _createFoldersRecursively(parentId, directories, directoryIndex = 0) {
     debug('Creating folders recursively. Now for %s [out of %s with index %s]', parentId, directories, directoryIndex);
 
-    return Promise.resolve(this.createFolder(directories[directoryIndex], parentId))
+    return Promise.resolve(this.createSingleFolder(directories[directoryIndex], parentId))
       .then(successful => {
         directoryIndex++;
         if (directoryIndex < directories.length) {
