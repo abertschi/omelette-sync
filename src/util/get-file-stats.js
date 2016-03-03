@@ -7,7 +7,8 @@ export default function getFileStats(path) {
     .map(stats => {
       return {
         id: stats.ino,
-        isDir: stats.isDirectory()
+        isDir: stats.isDirectory(),
+        stats: stats
       };
     });
 }
