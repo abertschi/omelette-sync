@@ -7,9 +7,6 @@ let debug = require('debug')('bean:app');
 
 var stream = require('stream');
 
-
-
-
 const mixin = require('es6-class-mixin');
 import StorageProvider from './storage-provider.js';
 
@@ -29,6 +26,14 @@ export default class GoogleDrive extends StorageProvider {
     });
 
     this.drive = google.drive('v3');
+  }
+
+  getRootDir() {
+    return this.basedir;
+  }
+
+  _getRootDirId() {
+    
   }
 
   move(fromPath, toPath) {
@@ -67,8 +72,8 @@ export default class GoogleDrive extends StorageProvider {
     return Bacon.fromNodeCallback(fs, 'stat', source)
       .flatMap(stats => {
         return Bacon.fromPromise(this.createFolder(dirname))
-          .flatMap(properties => {
-            let parentId = properties.id;
+          .flatMap(res => {
+            let parentId = res.properties.id;
             if (stats.isFile()) {
               return Bacon.fromPromise(this.search(basename))
                 .flatMap(search => {
@@ -79,7 +84,7 @@ export default class GoogleDrive extends StorageProvider {
                     return Bacon.once();
                   }
                 })
-                .flatMap(() => this._uploadWithParentId(source, basename, parentId));
+                .flatMap(() => this._uploadWithParentId(source, basename, parentId)); // TODO: double id
             } else {
               return Bacon.fromPromise(this.createSingleFolder(basename, parentId));
             }
@@ -98,7 +103,6 @@ export default class GoogleDrive extends StorageProvider {
 
   createFolder(basedir) {
     basedir = this._qualifyDirectory(basedir);
-
     let childdirs = basedir.split('/').filter(a => a.trim() != '');
     debug('Creating folders [%s]', childdirs);
 
@@ -117,7 +121,7 @@ export default class GoogleDrive extends StorageProvider {
     return Bacon.once()
       .flatMap(() => Bacon.try(source instanceof stream.Readable ? source : fs.createReadStream(source)))
       .map(body => {
-        return options = {
+        return {
           resource: {
             name: name,
             parents: [parentId]
@@ -129,8 +133,8 @@ export default class GoogleDrive extends StorageProvider {
         };
       })
       .flatMap(upload => {
-        let exec = Promise.promisify(this.drive.files.create)(upload);
-        return this._executeRequest(exec)
+        debug(upload);
+        return Bacon.fromPromise(Promise.promisify(this.drive.files.create)(upload))
           .map(result => {
             return {
               id: result
@@ -388,10 +392,14 @@ export default class GoogleDrive extends StorageProvider {
 
   _executeRequest(callback) {
     return Bacon.retry({
-        source: callback,
-        retries: 5,
-        isRetryable: function (error) { return error.httpStatusCode !== 404; },
-        delay: function(context) { return 100; }
+      source: callback,
+      retries: 5,
+      isRetryable: function(error) {
+        return error.httpStatusCode !== 404;
+      },
+      delay: function(context) {
+        return 100;
+      }
     })
   }
 

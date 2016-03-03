@@ -69,8 +69,12 @@ getGoogleAuthToken().then(bundle => {
     basedir: '/omelettes/'
   });
 
-  watcher.watch();
-  running();
+  drive.upload('/Users/abertschi/Dropbox/tmp/a', '/test/andrin')
+    .then(t => debug(t))
+    .catch(e => debug(e));
+
+  //watcher.watch();
+  //running();
 
   watcher.on('change', change => {
     debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
