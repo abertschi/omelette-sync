@@ -2,7 +2,7 @@
 
 OmeletteSync is a cloud storage sync tool with privacy concerns in mind.
 
-This are the primary goals:
+## Primary goals:
 - Synchronize files with cloud storage providers
 - Automatically detect file changes on your computer
 - Encrypt files before upload
