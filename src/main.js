@@ -68,14 +68,12 @@ getGoogleAuthToken().then(bundle => {
     auth: bundle.auth,
     basedir: '/omelettes/'
   });
-
+running();
   try {
 
-  drive.search('/test')
-    .then(t => debug(t))
+  drive.createFolder('/test/andrin')
+    .then(t => debug('got', t))
     .catch(e => debug('err', e.stack));
-  //fetching();
-
 }
 catch(e) {
 debug('catch: ', e.stack);
@@ -102,7 +100,7 @@ debug('catch: ', e.stack);
 
 function running() {
   setTimeout(function() {
-
+    running()
     //unning();
   }, 5000);
 }

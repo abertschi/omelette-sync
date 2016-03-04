@@ -5,6 +5,12 @@ import fs from 'fs';
 import Bacon from 'baconjs';
 let debug = require('debug')('bean:app');
 
+var httpOrNetworkError = require('requestretry/strategies').HTTPOrNetworkError;
+
+import colors from 'colors';
+
+var agent = require('superagent-promise')(require('superagent'));
+
 var stream = require('stream');
 
 const mixin = require('es6-class-mixin');
@@ -14,11 +20,14 @@ const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const ROOT_NAME_DRIVE = 'My Drive';
 const BACON_SEQUENTIAL_WAIT = 10;
 
+const BASE_URL = 'https://www.googleapis.com/drive/v3';
+
 export default class GoogleDrive extends StorageProvider {
 
   constructor(options = {}) {
     super();
     this.auth = options.auth;
+    this.retry = options.retry || 10;
     this.basedir = this._addEnding(options.basedir, '/');
 
     google.options({
@@ -32,13 +41,9 @@ export default class GoogleDrive extends StorageProvider {
     return this.basedir;
   }
 
-  _getRootDirId() {
+  _getRootDirId() {}
 
-  }
-
-  move(fromPath, toPath) {
-
-  }
+  move(fromPath, toPath) {}
 
   remove(location) {
     location = this._qualifyDirectory(location);
@@ -52,8 +57,8 @@ export default class GoogleDrive extends StorageProvider {
             }
           });
       })
-    .endOnError()
-    .toPromise();
+      .endOnError()
+      .toPromise();
   }
 
   getStorage() {
@@ -62,8 +67,8 @@ export default class GoogleDrive extends StorageProvider {
 
   upload(source, targetPath, properties = {}) {
     let fullPath = this._qualifyDirectory(targetPath);
-    let dirname = path.dirname(targetPath);
-    let basename = path.basename(targetPath);
+    let dirname = path.dirname(fullPath);
+    let basename = path.basename(fullPath);
 
     return Bacon.fromNodeCallback(fs, 'stat', source)
       .flatMap(stats => {
@@ -93,6 +98,7 @@ export default class GoogleDrive extends StorageProvider {
             }
           });
       })
+      .doAction(() => debug('Uploaded %s', fullPath))
       .endOnError()
       .toPromise();
   }
@@ -103,11 +109,11 @@ export default class GoogleDrive extends StorageProvider {
 
     return Bacon.fromPromise(this._createFoldersRecursively(null, childdirs))
       .flatMap(result => {
-          return {
-            properties: {
-              id: result.id
-            }
-          };
+        return {
+          properties: {
+            id: result.id
+          }
+        };
       })
       .doAction(() => debug('Folder %s created', basedir))
       .endOnError()
@@ -130,8 +136,8 @@ export default class GoogleDrive extends StorageProvider {
         };
       })
       .flatMap(upload => {
-        return Bacon.fromPromise(Promise.promisify(this.drive.files.create)(upload))
-          .map(result => {
+        return this._request(this.drive.files, 'create', upload)
+          .flatMap(result => {
             return {
               id: result
             };
@@ -139,79 +145,45 @@ export default class GoogleDrive extends StorageProvider {
       });
   }
 
-  //   return Promise.promisify(fs.stat)(sourcePath)
-  //     .then(stats => {
-  //       return {
-  //         dirname: path.dirname(targetPath),
-  //         basename: path.basename(targetPath),
-  //         isDir: !stats.isFile(),
-  //         stats: stats
-  //       };
-  //     })
-  //     .then(targetInfo => {
-  //       return this.createFolder(targetInfo.dirname)
-  //         .then(parentId => {
-  //           targetInfo.parentId = parentId;
-  //           return targetInfo;
-  //         })
-  //     })
-  //     .then(targetInfo => {
-  //       if (targetInfo.isDir) {
-  //         return {
-  //           id: targetInfo.parentId,
-  //           path: targetPath
-  //         }
-  //       } else {
-  //         return this.search(targetInfo.basename, {
-  //             withParentId: targetInfo.parentId
-  //           })
-  //           .then(found => {
-  //             if (found.files.length) {
-  //               return this.removeById(found.files[0].id)
-  //                 .then(() => targetInfo);
-  //             } else {
-  //               return targetInfo;
-  //             }
-  //           })
-  //           .then(targetInfo => {
-  //             let body = (source instanceof stream.Readable) ? source: fs.createReadStream(source);
-  //
-  //             let options = {
-  //               resource: {
-  //                 name: targetInfo.basename,
-  //                 parents: [targetInfo.parentId]
-  //               },
-  //               media: {
-  //                 body: body,
-  //               },
-  //               fields: 'id'
-  //             };
-  //
-  //             debug('Uploading %s to %s', sourcePath, targetPath);
-  //             return Promise.promisify(this.drive.files.create)(options)
-  //               .then(response => {
-  //                 if (response.id) {
-  //                   response.path = targetPath;
-  //                   response.parents = [targetInfo.parentId];
-  //                 }
-  //                 return response;
-  //               });
-  //           });
-  //       }
-  //     });
-  // }
-
   removeById(id) {
     let options = {
       fileId: id,
       fields: 'id'
     };
-    return Promise.promisify(this.drive.files.delete)(options)
-      .then(removed => {
-        return {
-          id: id
+
+    return this._request(this.drive.files, 'delete', options).toPromise();
+  }
+
+  _request(object, name, options) {
+    let source = Bacon.fromPromise(new Promise((resolve, reject) => {
+      let result = object[name](options, (err, response) => {
+        if (err) {
+          reject(err, result);
+        } else {
+          resolve(response, result);
         }
+      }).on('error', (err) => {
+        reject(err, result);
       });
+    }));
+
+    return Bacon.retry({
+      source: function() {
+        debug(`Executing request google-drive:${name}.`, options);
+        return source;
+      },
+      retries: this.retry,
+      isRetryable: function(error) {
+        let retryable = httpOrNetworkError(error);
+        if (retryable) {
+          debug(`Network error ${error.code} occurred while (google-drive:${name}).`.red);
+        }
+        return retryable;
+      },
+      delay: function(context) {
+        return 1000 + Math.floor((Math.random() * 15) + 1) * 1000;
+      }
+    })
   }
 
   getFileMetaByPath(directory) {
@@ -219,7 +191,7 @@ export default class GoogleDrive extends StorageProvider {
     let parents = directory.split('/').filter(a => a.trim() != '');
     let basename = parents.pop();
     let parentDirectories = parents.reverse()
-    let searchOptions = {
+    let searchOptions = { // TODO: parent can be subfolder, user defined
       onRoot: parents.length === 1
     };
 
@@ -227,13 +199,13 @@ export default class GoogleDrive extends StorageProvider {
         .then(found => {
           let foundFiles = found.files;
           if (foundFiles.length == 1) {
-            // only 1 file found. No futher search necessary.
             return {
               id: foundFiles[0].id
             }
           } else if (foundFiles.length > 1) {
             return this._findMatchingParent(foundFiles, parentDirectories);
           } else {
+            return null;
             throw new Error(`No file found with path ${directory}`);
           }
         }))
@@ -249,7 +221,7 @@ export default class GoogleDrive extends StorageProvider {
       fileId: fileId,
       fields: 'id, name, parents'
     }
-    return Promise.promisify(this.drive.files.get)(options);
+    return this._request(this.drive.files, 'get', options).toPromise();
   }
 
   search(name, parms = {}) {
@@ -270,17 +242,10 @@ export default class GoogleDrive extends StorageProvider {
     let trashed = options.includeTrashed ? true : false;
     options.q = options.q + ` and trashed = ${trashed}`;
 
-    return this._executeRequest(() => {
-      return Promise.promisify(this.drive.files.list)(options);
-    });
-
-    //debug('Searching for %s', name);
-
+    return this._request(this.drive.files, 'list', options).toPromise();
   }
 
   changes() {}
-
-
 
   createSingleFolder(folderName, parentId = null) {
     let searchArgs = {};
@@ -316,10 +281,7 @@ export default class GoogleDrive extends StorageProvider {
         if (parentId)
           options.resource.parents = [parentId];
 
-        debug('Creating folder %s', folderName);
-        let exec = () => Promise.promisify(this.drive.files.create)(options);
-        return this._executeRequest(exec);
-        //return Promise.promisify(this.drive.files.create)(options);
+        return this._request(this.drive.files, 'create', options).toPromise();
       });
   }
 
@@ -354,7 +316,6 @@ export default class GoogleDrive extends StorageProvider {
         return array;
       })
       .flatMap(array => {
-        debug(array);
         if (!array.length) {
           return Bacon.once(new Bacon.Error(`No file found with parents [${parentDirectories}]`));
         } else {
@@ -388,21 +349,6 @@ export default class GoogleDrive extends StorageProvider {
           }
         }
       });
-  }
-
-  _executeRequest(callback) {
-    debug('exec', callback)
-    return Bacon.retry({
-      source: callback,
-      retries: 5,
-      isRetryable: function(error) {
-        debug('bean', error);
-        return true;
-      },
-      delay: function(context) {
-        return 1000;
-      }
-    }).toPromise();
   }
 
   _splitIntoDirs(path) {
