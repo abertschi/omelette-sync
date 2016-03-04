@@ -63,15 +63,32 @@ let queue = new UploadQueue();
 let drive;
 
 getGoogleAuthToken().then(bundle => {
-
+  debug('got')
   drive = new GoogleDrive({
     auth: bundle.auth,
     basedir: '/omelettes/'
   });
 
-  drive.upload('/Users/abertschi/Dropbox/tmp/a', '/test/andrin')
+  try {
+
+  drive.search('/test')
     .then(t => debug(t))
-    .catch(e => debug(e));
+    .catch(e => debug('err', e.stack));
+  //fetching();
+
+}
+catch(e) {
+debug('catch: ', e.stack);
+}
+
+
+
+
+    // drive.createFolder('/test')
+    //   .then(t => debug(t))
+    //   .catch(e => debug('err', e));
+
+
 
   //watcher.watch();
   //running();
@@ -85,8 +102,8 @@ getGoogleAuthToken().then(bundle => {
 
 function running() {
   setTimeout(function() {
-    fetching();
-    running();
+
+    //unning();
   }, 5000);
 }
 

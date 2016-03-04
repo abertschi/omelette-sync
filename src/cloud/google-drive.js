@@ -33,7 +33,7 @@ export default class GoogleDrive extends StorageProvider {
   }
 
   _getRootDirId() {
-    
+
   }
 
   move(fromPath, toPath) {
@@ -43,21 +43,17 @@ export default class GoogleDrive extends StorageProvider {
   remove(location) {
     location = this._qualifyDirectory(location);
 
-    return this.getFileMetaByPath(location)
-      .catch(e => {
-        debug('Path %s not existing', location, JSON.stringify(e));
-        return;
+    return Bacon.fromPromise(this.getFileMetaByPath(location))
+      .flatMap(found => {
+        return Bacon.fromPromise(this.removeById(found.id))
+          .flatMap(() => {
+            return {
+              properties: []
+            }
+          });
       })
-      .then(result => {
-        if (!result || !result.id)
-          return;
-
-        return this.removeById(result.id);
-      }).then(result => {
-        result = result || {};
-        result.path = location;
-        return result;
-      });
+    .endOnError()
+    .toPromise();
   }
 
   getStorage() {
@@ -104,17 +100,18 @@ export default class GoogleDrive extends StorageProvider {
   createFolder(basedir) {
     basedir = this._qualifyDirectory(basedir);
     let childdirs = basedir.split('/').filter(a => a.trim() != '');
-    debug('Creating folders [%s]', childdirs);
 
-    return this._createFoldersRecursively(null, childdirs)
-      .then(success => {
-        debug('folders %s created. child id: %s', basedir, success.id);
-        return {
-          properties: {
-            id: success.id
-          }
-        };
-      });
+    return Bacon.fromPromise(this._createFoldersRecursively(null, childdirs))
+      .flatMap(result => {
+          return {
+            properties: {
+              id: result.id
+            }
+          };
+      })
+      .doAction(() => debug('Folder %s created', basedir))
+      .endOnError()
+      .toPromise();
   }
 
   _uploadWithParentId(source, name, parentId) {
@@ -133,7 +130,6 @@ export default class GoogleDrive extends StorageProvider {
         };
       })
       .flatMap(upload => {
-        debug(upload);
         return Bacon.fromPromise(Promise.promisify(this.drive.files.create)(upload))
           .map(result => {
             return {
@@ -220,13 +216,12 @@ export default class GoogleDrive extends StorageProvider {
 
   getFileMetaByPath(directory) {
     directory = this._qualifyDirectory(directory);
-
     let parents = directory.split('/').filter(a => a.trim() != '');
+    let basename = parents.pop();
+    let parentDirectories = parents.reverse()
     let searchOptions = {
       onRoot: parents.length === 1
     };
-    let basename = parents.pop();
-    let parentDirectories = parents.reverse()
 
     return Promise.resolve(this.search(basename, searchOptions)
         .then(found => {
@@ -262,6 +257,7 @@ export default class GoogleDrive extends StorageProvider {
       q: `name='${name}'`,
       fields: 'nextPageToken, files(id, name, parents)'
     }
+
     if (parms.nextPageToken)
       options.pageToken = parms.nextPageToken;
 
@@ -274,8 +270,12 @@ export default class GoogleDrive extends StorageProvider {
     let trashed = options.includeTrashed ? true : false;
     options.q = options.q + ` and trashed = ${trashed}`;
 
-    debug('Searching for %s', name);
-    return Promise.promisify(this.drive.files.list)(options);
+    return this._executeRequest(() => {
+      return Promise.promisify(this.drive.files.list)(options);
+    });
+
+    //debug('Searching for %s', name);
+
   }
 
   changes() {}
@@ -317,13 +317,13 @@ export default class GoogleDrive extends StorageProvider {
           options.resource.parents = [parentId];
 
         debug('Creating folder %s', folderName);
-        return Promise.promisify(this.drive.files.create)(options);
+        let exec = () => Promise.promisify(this.drive.files.create)(options);
+        return this._executeRequest(exec);
+        //return Promise.promisify(this.drive.files.create)(options);
       });
   }
 
   _createFoldersRecursively(parentId, directories, directoryIndex = 0) {
-    debug('Creating folders recursively. Now for %s [out of %s with index %s]', parentId, directories, directoryIndex);
-
     return Promise.resolve(this.createSingleFolder(directories[directoryIndex], parentId))
       .then(successful => {
         directoryIndex++;
@@ -391,16 +391,18 @@ export default class GoogleDrive extends StorageProvider {
   }
 
   _executeRequest(callback) {
+    debug('exec', callback)
     return Bacon.retry({
       source: callback,
       retries: 5,
       isRetryable: function(error) {
-        return error.httpStatusCode !== 404;
+        debug('bean', error);
+        return true;
       },
       delay: function(context) {
-        return 100;
+        return 1000;
       }
-    })
+    }).toPromise();
   }
 
   _splitIntoDirs(path) {
