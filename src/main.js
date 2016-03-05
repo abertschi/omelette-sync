@@ -1,16 +1,69 @@
 import Watcher from './watcher.js';
 import Storage from './storage.js';
 import UploadQueue from './upload-queue.js';
-let debug = require('debug')('bean:app');
 import colors from 'colors';
-
 import readline from 'readline';
 import Q from 'Q';
 import Bacon from 'baconjs';
 import fs from 'fs';
-
+import SyncManager from './sync-manager.js';
+import uploadQueue from './upload-queue.js';
 import getGoogleAuthToken from './cloud/get-google-auth-token.js';
 import GoogleDrive from './cloud/google-drive.js';
+
+let debug = require('debug')('bean:app');
+
+const WATCH_HOMEDIR = '/Users/abertschi/Dropbox/tmp';
+let watcher;
+let lastrun = Storage.getItem('lastrun');
+let initDone = Storage.getItem('initdone');
+let init = true;
+
+if (lastrun && initDone) {
+  lastrun = new Date(lastrun);
+  init = false;
+  debug('Continuing work from ' + '%s'.green, lastrun);
+} else {
+  debug('Initializing application');
+}
+
+getGoogleAuthToken().then(bundle => {
+  debug('Got auth bundle');
+
+  let drive = new GoogleDrive({
+    auth: bundle.auth,
+    basedir: '/omelettes/'
+  });
+
+  let manager = new SyncManager({
+    providers: [drive],
+    watchHome: WATCH_HOMEDIR
+  });
+  manager.start();
+
+  watcher = new Watcher({
+    directory: WATCH_HOMEDIR,
+    since: lastrun,
+    init: init,
+    type: 'fswatch'
+  });
+  watcher.watch();
+
+  watcher.on('index-created', () => {
+    Storage.setItem('initdone', new Date());
+    debug('Initializing is done');
+  });
+
+  watcher.on('changes-since-done', () => {
+    Storage.setItem('last_offline_changes', new Date());
+    debug('Fetching delta is done');
+  });
+
+  watcher.on('change', change => {
+    debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
+    uploadQueue.push(change);
+  });
+});
 
 process.on('SIGINT', function() {
   Storage.setItem('lastrun', new Date());
@@ -20,134 +73,13 @@ process.on('SIGINT', function() {
   }, 5000);
 });
 
-let lastrun = Storage.getItem('lastrun');
-let lastupdate = Storage.getItem('lastupdate');
-let initSuccessful = Storage.getItem('init-successful');
-let init = true;
-
 process.on('unhandledRejection', function(error, promise) {
-  console.error("UNHANDLED REJECTION", error, error.stack);
+  console.error("UNHANDLED REJECTION".red, error, error.stack);
 });
 
-if (lastupdate) {
-  lastrun = lastupdate;
-}
-
-if (lastrun && initSuccessful) {
-  lastrun = new Date(lastrun);
-  init = false;
-  debug('Continuing work from ' + '%s'.green, lastrun);
-} else {
-  debug('Initializing application');
-}
-
-const WATCH_HOMEDIR = '/Users/abertschi/Dropbox/tmp';
-let watcher = new Watcher({
-  directory: WATCH_HOMEDIR,
-  // since: lastrun,
-  // init: init,
-  type: 'fswatch'
-});
-
-watcher.on('index-created', () => {
-  Storage.setItem('init-successful', new Date());
-  debug('Initializing is done');
-});
-
-watcher.on('changes-since-done', () => {
-  Storage.setItem('delta-done', new Date());
-  debug('Fetching delta is done');
-});
-
-let queue = new UploadQueue();
-let drive;
-
-getGoogleAuthToken().then(bundle => {
-  debug('got')
-  drive = new GoogleDrive({
-    auth: bundle.auth,
-    basedir: '/omelettes/'
-  });
-running();
-  try {
-
-  drive.createFolder('/test/andrin')
-    .then(t => debug('got', t))
-    .catch(e => debug('err', e.stack));
-}
-catch(e) {
-debug('catch: ', e.stack);
-}
-
-
-
-
-    // drive.createFolder('/test')
-    //   .then(t => debug(t))
-    //   .catch(e => debug('err', e));
-
-
-
-  //watcher.watch();
-  //running();
-
-  watcher.on('change', change => {
-    debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
-    queue.push(change);
-  });
-});
-
-
-function running() {
+keepalive();
+function keepalive() {
   setTimeout(function() {
-    running()
-    //unning();
-  }, 5000);
-}
-
-let empty = false;
-queue.getSize()
-  .then(size => {
-    empty = size == 0;
-  });
-queue.on('queue-empty', () => {
-  empty = true;
-});
-
-queue.on('queue-not-empty', () => {
-  empty = false;
-});
-
-
-async function fetching() {
-  debug('fetching');
-  try {
-    debug(empty);
-    if (!empty) {
-      let size = await queue.getSize();
-      if (size) {
-        let upload = await queue.pop();
-        debug(upload);
-        if (upload) {
-          let target = upload.path.replace(WATCH_HOMEDIR, '');
-          switch (upload.action) {
-            case 'ADD':
-            case 'CHANGE':
-              drive.upload(upload.path, target)
-                .then(done => queue.flagAsDone(upload))
-                .catch(err => debug('ERR', err, err.stack));
-              break;
-            case 'REMOVE':
-              drive.removeByPath(target)
-                .then(done => queue.flagAsDone(upload))
-                .catch(err => debug('ERR', err, err.stack));
-              break;
-            default:
-          }
-        }
-      }
-    }
-  } catch (e) {
-    debug(e);
-  }
+    keepalive();
+  }, 10000);
 }

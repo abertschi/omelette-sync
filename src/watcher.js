@@ -93,7 +93,10 @@ export default class Watcher extends EventEmitter {
   }
 
   _emitChange(file) {
-    this.emit('change', file);
+    let self = this;
+    process.nextTick(function() {
+      self.emit('change', file);
+    });
   }
 
   _getWatcherStream() {

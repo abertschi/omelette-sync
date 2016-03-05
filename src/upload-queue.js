@@ -8,7 +8,7 @@ let debug = require('debug')('bean:app');
 
 import EventEmitter from 'events';
 
-export default class UploadQueue extends EventEmitter {
+class UploadQueue extends EventEmitter {
 
   constructor(init = {}) {
     super();
@@ -54,6 +54,11 @@ export default class UploadQueue extends EventEmitter {
       .onValue(() => this._emitQueueStatus());
   }
 
+  flagAsRedo(change) {
+    return this._setActiveFlag(change.action, change.path, false)
+      .onValue(() => this._emitQueueStatus());
+  }
+
   pop() {
     return this._getOldest()
       .map(found => {
@@ -94,19 +99,12 @@ export default class UploadQueue extends EventEmitter {
 
     return Bacon.fromNodeCallback(db, 'get', QUERY, [action, path])
       .map(row => row ? JSON.parse(row.json) : null);
-    //
-    // return db.getAsync(QUERY, [action, path])
-    //   .then(result => result ? JSON.parse(result.json) : null)
-    //   .catch(e => {
-    //     debug(e);
-    //     return false;
-    //   });
   }
 
   _getOldest() {
-    const QUERY = 'SELECT action, path, json from UPLOAD_QUEUE ORDER BY date(timestamp) DESC Limit 1'
+    const QUERY = 'SELECT action, path, json from UPLOAD_QUEUE WHERE active=? ORDER BY date(timestamp) DESC Limit 1'
 
-    return Bacon.fromNodeCallback(db, 'get', QUERY, [])
+    return Bacon.fromNodeCallback(db, 'get', QUERY, [0])
       .map(row => {
         if (row) {
           return {
@@ -158,6 +156,12 @@ export default class UploadQueue extends EventEmitter {
 
   _emitQueueStatus() {
     return this.getSize()
-      .then(size => size == 0 ? this.emit('empty-queue') : this.emit('not-empty-queue'));
+      .then(size => {
+        debug(size);
+        let emit = size == 0 ? 'empty' : 'not-empty';
+        this.emit(emit);
+      });
   }
 }
+
+export default new UploadQueue();

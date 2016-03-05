@@ -1,24 +1,20 @@
+import fs from 'fs';
+import Bacon from 'baconjs';
+import isNetworkError from './is-network-error.js';
+import colors from 'colors';
+import StorageProvider from './storage-provider.js';
+
+var agent = require('superagent-promise')(require('superagent'));
+var stream = require('stream');
+const mixin = require('es6-class-mixin');
+let debug = require('debug')('bean:app');
 var google = require('googleapis');
 var path = require('path');
 var Promise = require('bluebird');
-import fs from 'fs';
-import Bacon from 'baconjs';
-let debug = require('debug')('bean:app');
-
-var httpOrNetworkError = require('requestretry/strategies').HTTPOrNetworkError;
-
-import colors from 'colors';
-
-var agent = require('superagent-promise')(require('superagent'));
-
-var stream = require('stream');
-
-const mixin = require('es6-class-mixin');
-import StorageProvider from './storage-provider.js';
 
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const ROOT_NAME_DRIVE = 'My Drive';
-const BACON_SEQUENTIAL_WAIT = 10;
+const BACON_SEQUENTIAL_WAIT = 150;
 
 const BASE_URL = 'https://www.googleapis.com/drive/v3';
 
@@ -37,14 +33,6 @@ export default class GoogleDrive extends StorageProvider {
     this.drive = google.drive('v3');
   }
 
-  getRootDir() {
-    return this.basedir;
-  }
-
-  _getRootDirId() {}
-
-  move(fromPath, toPath) {}
-
   remove(location) {
     location = this._qualifyDirectory(location);
 
@@ -57,11 +45,20 @@ export default class GoogleDrive extends StorageProvider {
             }
           });
       })
+      .doAction(() => debug(`Delete of ${location} done.`))
       .endOnError()
       .toPromise();
   }
 
   getStorage() {
+    throw new Error('Not yet impl.');
+  }
+
+  getRootDir() {
+    return this.basedir;
+  }
+
+  move(fromPath, toPath) {
     throw new Error('Not yet impl.');
   }
 
@@ -98,7 +95,7 @@ export default class GoogleDrive extends StorageProvider {
             }
           });
       })
-      .doAction(() => debug('Uploaded %s', fullPath))
+      .doAction(() => debug(`Upload of ${fullPath} done.`))
       .endOnError()
       .toPromise();
   }
@@ -121,6 +118,7 @@ export default class GoogleDrive extends StorageProvider {
   }
 
   _uploadWithParentId(source, name, parentId) {
+    debug('upload from ', source, name, parentId);
     return Bacon.once()
       .flatMap(() => Bacon.try(source instanceof stream.Readable ? source : fs.createReadStream(source)))
       .map(body => {
@@ -145,6 +143,12 @@ export default class GoogleDrive extends StorageProvider {
       });
   }
 
+
+  _getRootDirId() {
+    throw new Error('Not yet impl.');
+  }
+
+
   removeById(id) {
     let options = {
       fileId: id,
@@ -152,38 +156,6 @@ export default class GoogleDrive extends StorageProvider {
     };
 
     return this._request(this.drive.files, 'delete', options).toPromise();
-  }
-
-  _request(object, name, options) {
-    let source = Bacon.fromPromise(new Promise((resolve, reject) => {
-      let result = object[name](options, (err, response) => {
-        if (err) {
-          reject(err, result);
-        } else {
-          resolve(response, result);
-        }
-      }).on('error', (err) => {
-        reject(err, result);
-      });
-    }));
-
-    return Bacon.retry({
-      source: function() {
-        debug(`Executing request google-drive:${name}.`, options);
-        return source;
-      },
-      retries: this.retry,
-      isRetryable: function(error) {
-        let retryable = httpOrNetworkError(error);
-        if (retryable) {
-          debug(`Network error ${error.code} occurred while (google-drive:${name}).`.red);
-        }
-        return retryable;
-      },
-      delay: function(context) {
-        return 1000 + Math.floor((Math.random() * 15) + 1) * 1000;
-      }
-    })
   }
 
   getFileMetaByPath(directory) {
@@ -205,7 +177,6 @@ export default class GoogleDrive extends StorageProvider {
           } else if (foundFiles.length > 1) {
             return this._findMatchingParent(foundFiles, parentDirectories);
           } else {
-            return null;
             throw new Error(`No file found with path ${directory}`);
           }
         }))
@@ -292,7 +263,7 @@ export default class GoogleDrive extends StorageProvider {
         if (directoryIndex < directories.length) {
           return this._createFoldersRecursively(successful.id, directories, directoryIndex);
         } else {
-          debug('All folders [%s] created. child id: %s', directories, successful.id);
+          //debug('All folders [%s] created. child id: %s', directories, successful.id);
           return successful;
         }
       });
@@ -336,15 +307,15 @@ export default class GoogleDrive extends StorageProvider {
             index++
             return this._followParents(file.parents[0], directories, index);
           } else {
-            debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
+            //debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
             return true;
           }
         } else {
           if (!file.parents && (index == directories.length || !directories.length)) {
-            debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
+            //debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
             return true;
           } else {
-            debug('parent %s (%s) does not match directory tree %s', file.id, file.name, directories);
+            //debug('parent %s (%s) does not match directory tree %s', file.id, file.name, directories);
             return false;
           }
         }
@@ -365,5 +336,39 @@ export default class GoogleDrive extends StorageProvider {
 
   _addEnding(directory, ending) {
     return directory.endsWith(ending) ? directory : directory + ending;
+  }
+
+  _request(object, name, options) {
+    let source = Bacon.fromPromise(new Promise((resolve, reject) => {
+      process.nextTick(function() {
+        let result = object[name](options, (err, response) => {
+          if (err) {
+            reject(err, result);
+          } else {
+            resolve(response, result);
+          }
+        }).on('error', (err) => {
+          reject(err, result);
+        });
+      });
+    }));
+
+    return Bacon.retry({
+      source: function() {
+        return source;
+      },
+      retries: this.retry,
+      isRetryable: function(error) {
+        let retryable = isNetworkError(error);
+        if (retryable) {
+          debug(`Network or HTTP error (${error.code}) occurred while (google-drive:${name}).`.red);
+          debug(`${error.stack}`.red);
+        }
+        return retryable;
+      },
+      delay: function(context) {
+        return Math.pow(2, context.retriesDone) * 1000 + Math.floor((Math.random() * 60) + 1) * 1000;
+      }
+    })
   }
 }

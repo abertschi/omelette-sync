@@ -2,7 +2,7 @@ import childProcess from 'child_process';
 import Bacon from 'baconjs';
 import getFileStats from './../util/get-file-stats.js';
 let debug = require('debug')('bean:watcher:fswatch');
-let debugRaw = require('debug')('bean:watcher:fswatch:raw');
+let trace = require('debug')('bean:watcher:trace');
 var path = require('path');
 import {
   createBufferdStream
@@ -62,7 +62,7 @@ export default class FsWatchWatcherOsx {
       .flatMap(founds => Bacon.fromArray(founds.split('\n')))
       .filter(f => f.trim() != '')
       .flatMap(output => {
-        debugRaw(output);
+        trace(output);
 
         const PATH_SEPARATOR = output.lastIndexOf(' ');
         let path = output.substring(0, PATH_SEPARATOR);
