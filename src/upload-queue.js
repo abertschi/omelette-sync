@@ -84,7 +84,7 @@ class UploadQueue extends EventEmitter {
       .fold([], (array, active) => {
         array.push(active);
         return array;
-      });
+      }).toPromise();
   }
 
   _hasKey(action, path) {

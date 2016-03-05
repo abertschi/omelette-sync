@@ -7,7 +7,7 @@ import StorageProvider from './storage-provider.js';
 var agent = require('superagent-promise')(require('superagent'));
 var stream = require('stream');
 const mixin = require('es6-class-mixin');
-let debug = require('debug')('bean:app');
+let debug = require('debug')('bean:app:1');
 var google = require('googleapis');
 var path = require('path');
 var Promise = require('bluebird');
@@ -61,7 +61,42 @@ export default class GoogleDrive extends StorageProvider {
   }
 
   move(fromPath, toPath) {
-    throw new Error('Not yet impl.');
+    let fromMetaStream = Bacon.fromPromise(this.getFileMetaByPath(fromPath));
+    let basedir = path.dirname(toPath);
+    let filename = path.basename(toPath);
+    let toMetaStream = Bacon.fromPromise(this.createFolder(basedir));
+
+    return Bacon.zipWith(fromMetaStream, toMetaStream, (fromMeta, toMeta) => {
+      debug(fromMeta, toMeta);
+      return {
+        source: fromMeta,
+        target: toMeta
+      };
+    })
+    .flatMap(meta => {
+        return Bacon.fromPromise(this.getFileMeta(meta.source.id))
+          .flatMap(sourceDetails => {
+            let options = {
+              fileId: meta.source.id,
+              removeParents: sourceDetails.parents,
+              addParents: [meta.target.properties.id],
+              resource: {
+                  name: filename,
+              }
+            }
+            return this._request(this.drive.files, 'update', options)
+          })
+          .flatMap(result => {
+            return {
+              properties: {
+                sourceId: meta.source.id,
+                targetId: meta.target,
+              }
+            };
+          })
+    })
+    .endOnError()
+    .toPromise();
   }
 
   upload(source, targetPath, properties = {}) {
@@ -124,7 +159,23 @@ export default class GoogleDrive extends StorageProvider {
   _uploadWithParentId(source, name, parentId) {
     debug('upload from ', source, name, parentId);
     return Bacon.once()
-      .flatMap(() => Bacon.try(source instanceof stream.Readable ? source : fs.createReadStream(source)))
+      .flatMap(() => {
+        if (source instanceof stream.Readable) {
+          return source;
+        } else {
+          try {
+            let stream = fs.createReadStream(source);
+            stream.on('error', (e) => {
+                debug('Error in stream', e, e.stack);
+                return new Bacon.Error(e);
+                // TODO: Error handling streams
+            });
+            return stream;
+          } catch(e) {
+            return new Bacon.Error(e);
+          }
+        }
+      })
       .map(body => {
         return {
           resource: {
@@ -146,7 +197,6 @@ export default class GoogleDrive extends StorageProvider {
           });
       });
   }
-
 
   _getRootDirId() {
     if (!this.rootDirId) {
@@ -277,6 +327,7 @@ export default class GoogleDrive extends StorageProvider {
       .flatMap(searchArgs => {
         return Bacon.fromPromise(this.search(folderName, searchArgs))
           .flatMap(search => {
+            debug('search result for ',folderName, search);
             if (search.files.length) {
               return {
                 id: search.files[0].id,

@@ -9,7 +9,7 @@ export default class SyncManager {
     this.providers = options.providers || [];
     this.strategy = options.strategy || 'first-full'; // 'distribute'
     this.watchHome = options.watchHome;
-    this.uploadsAtOnce = options.uploadsAtOnce || 3;
+    this.uploadsAtOnce = options.uploadsAtOnce || 7;
     this._running = false;
     this.started = false;
     this.bufferSize = 0;
@@ -42,30 +42,42 @@ export default class SyncManager {
 
 
   async _run() {
+    debug('new iteration');
     if (this._running && this.bufferSize < this.uploadsAtOnce) {
       this.bufferSize++;
 
-      let size = await uploadQueue.getSize();
-      if (size) {
-        let upload = await uploadQueue.pop();
-        if (upload) {
-          let target = upload.path.replace(this.watchHome, '');
-          let provider = this.getProvider();
+      let upload;
+      if (this.uploadsFromLastRun.length) {
+        upload = this.uploadsFromLastRun.pop();
+      } else {
+        upload = await uploadQueue.peek();
+      }
 
-          switch (upload.action) {
-            case 'ADD':
-            case 'CHANGE':
-              let promise = provider.upload(upload.path, target);
-              this._markAsDoneIfNoError(promise, upload);
+      if (upload) {
+        let targetPath = upload.path.replace(this.watchHome, '');
+        let provider = this.getProvider();
+
+        switch (upload.action) {
+          case 'ADD':
+          case 'CHANGE':
+            let addPromise = provider.upload(upload.path, targetPath);
+            this._markAsDoneIfNoError(addPromise, upload);
+            break;
+            case 'MOVE':
+              let fromPath = upload.pathOrigin.replace(this.watchHome, '');
+              let movePromise = provider.move(fromPath, targetPath);
+              this._markAsDoneIfNoError(movePromise, upload);
               break;
-            case 'REMOVE':
-              let remove = provider.remove(target);
-              this._markAsDoneIfNoError(remove, upload);
-              break;
-            default:
-              debug('Unknown change type', change);
-          }
+          case 'REMOVE':
+            let removePromise = provider.remove(targetPath);
+            this._markAsDoneIfNoError(removePromise, upload);
+            break;
+          default:
+            debug('Unknown change type', change);
         }
+
+      } else {
+        this.bufferSize --;
       }
     }
   }
@@ -74,7 +86,10 @@ export default class SyncManager {
     if (!this.getProvider) {
       throw new Error('No storage provider configured');
     }
-    if (await uploadQueue.getSize()) {
+    this.uploadsFromLastRun = await uploadQueue.getFlaggedAsActive() || [];
+    let size = await uploadQueue.getSize();
+
+    if (this.uploadsFromLastRun && this.uploadsFromLastRun.length || size) {
       this._running = true;
       this._check_running();
     }
@@ -104,8 +119,10 @@ export default class SyncManager {
         debug(err, err.stack);
         if (isNetworkError(err)) {
           uploadQueue.flagAsRedo(change);
-          this.bufferSize--;
+        } else {
+          uploadQueue.flagAsDone(change);
         }
+        this.bufferSize--;
       });
   }
 }
