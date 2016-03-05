@@ -47,6 +47,7 @@ getGoogleAuthToken().then(bundle => {
     init: init,
     type: 'fswatch'
   });
+
   watcher.watch();
 
   watcher.on('index-created', () => {
