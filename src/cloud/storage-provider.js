@@ -6,8 +6,15 @@ class Provider {
     };
   }
 
-  fetchChanges() {
-    
+  listChanges(since, properties = {}) {
+    return {
+      changes: [{
+        action: 'REMOVE',
+        path: '/relative/to/syncroot',
+        properties: {}
+      }],
+      properties: {}
+    };
   }
 
   createFolder(location, properties = {}) {

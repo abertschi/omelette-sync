@@ -41,7 +41,8 @@ getGoogleAuthToken().then(bundle => {
 
   let manager = new SyncManager({
     providers: [drive],
-    watchHome: WATCH_HOMEDIR
+    watchHome: WATCH_HOMEDIR,
+
   });
   manager.start();
 
@@ -66,7 +67,7 @@ getGoogleAuthToken().then(bundle => {
 
   watcher.on('change', change => {
     debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
-    manager.queueUpload(change);
+    manager.pushUpload(change);
   });
 });
 

@@ -1,42 +1,134 @@
-import UploadManager from './upload-manager.js';
-import DownloadManager from './download-manager.js'
+import ChangeQueue from './change-queue.js';
+import isNetworkError from './cloud/is-network-error.js';
+import Bacon from 'baconjs';
+import Encryption from './encryption.js';
+import fs from 'fs';
+import Providers from './cloud/providers.js';
+import ChangeRunner from './change-runner.js';
+
+let debug = require('debug')('bean:app');
+
+const ENCRYPTED_ENDING = '.enc';
+const UPLOAD_CONCURRENCY_LIMIT = 1;
+const DOWNLOAD_CONCURRENCY_LIMIT = 1;
 
 export default class SyncManager {
 
-  constructor(options) {
+  constructor(options = {}) {
+    this.providers = options.providers || [];
+    this._providerDelegate = new Providers(this.providers);
+
+    this.uploadStrategy = options.uploadStrategy || 'first-full'; /// 'distribute'
     this.watchHome = options.watchHome;
-    let providers = options.providers || [];
+    if (options.encryption) {
+      this.useEncryption = true;
+      this.encryptFileNames = options.encryption.encryptFilenames;
+      this.password = options.encryption.password;
+    } else {
+      this.useEncryption = false;
+    }
 
-    this.downloadManager = new DownloadManager({
-      providers: providers,
-      watchHome: this.watchHome
+    this._uploadQueue = new ChangeQueue({
+      tablename: 'UPLOAD_QUEUE'
+    });
+    this._downloadQueue = new ChangeQueue({
+      tablename: 'DOWNLOAD_QUEUE'
     });
 
-    this.uploadManager = new UploadManager({
-      providers: providers,
-      watchHome: this.watchHome
+    this.encryptor = new Encryption({
+      password: this.password
     });
-
-    this.changes = new Map();
 
     if (!this.watchHome) {
-      throw new Error('No Watch Home defined');
+      throw new Error('No watch home dir');
     }
   }
 
   start() {
-    this.uploadManager.start();
-    this.downloadManager.start();
+    if (!this._uploadRunner) {
+      this._uploadRunner = new ChangeRunner({
+        queue: this._uploadQueue,
+        callback: this.nextUpload,
+        callbackObject: this,
+        concurrencyLimit: 1
+      });
+      this._downloadRunner = new ChangeRunner({
+        queue: this._downloadQueue,
+        callback: this.nextDownload,
+        callbackObject: this,
+        concurrencyLimit: 1
+      });
+    }
+    this._uploadRunner.start();
+    this._downloadRunner.start();
   }
 
   stop() {
-    this.uploadManager.stop();
-    this.downloadManager.stop();
+    this._uploadRunner.stop();
+    this._downloadRunner.stop();
   }
 
-  queueUpload(change) {
-    // remember change so wont be downloaded after upload
-    this.changes.set(change.path, '');
-    this.uploadManager.push(change);
+  pushUpload(change) {
+    this._uploadQueue.push(change);
+  }
+
+  async nextUpload(change) {
+    debug(change);
+    let targetPath = change.path.replace(this.watchHome, '');
+    let provider = this._getProvider();
+    let promise;
+
+    switch (change.action) {
+      case 'ADD':
+      case 'CHANGE':
+        if (change.isDir) {
+          promise = provider.createFolder(targetPath);
+        } else {
+          let upstream = this._createReadStream(change.path);
+          promise = provider.upload(upstream, targetPath);
+        }
+        break;
+      case 'MOVE':
+        let fromPath = change.pathOrigin.replace(this.watchHome, '');
+        promise = provider.move(fromPath, targetPath);
+        break;
+      case 'REMOVE':
+        promise = provider.remove(targetPath);
+        break;
+      default:
+        debug('Unknown change type', change);
+    }
+    return promise;
+  }
+
+  async _nextDownload(change) {
+    debug('downloading: ', change);
+    return null;
+  }
+
+  _createReadStream(location) {
+    let stream = fs.createReadStream(location);
+    if (this.useEncryption) {
+      return this.encryption.encryptStream(stream);
+    } else {
+      return stream;
+    }
+  }
+
+  _createWriteStream(location) {
+    let stream = fs.createWriteStream(location);
+    if (this.useEncryption) {
+      return this.encryption.decryptStream(stream);
+    } else {
+      return stream;
+    }
+  }
+
+  _getProvider() {
+    // challenges for distribution strategy
+    // how to handle new folder change events among providers?
+    // - track which provider stores what file?
+    // how to make sure to delete all files within a folder remove
+    return this.providers.length ? this.providers[0] : null;
   }
 }

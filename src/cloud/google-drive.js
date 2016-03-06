@@ -15,8 +15,6 @@ var Promise = require('bluebird');
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const BACON_SEQUENTIAL_WAIT = 10;
 
-const BASE_URL = 'https://www.googleapis.com/drive/v3';
-
 export default class GoogleDrive extends StorageProvider {
 
   constructor(options = {}) {
@@ -90,8 +88,60 @@ export default class GoogleDrive extends StorageProvider {
       .toPromise();
   }
 
-  listChanges() {
+  listChanges(key, properties = {}) {
+    let pageToken = key || properties.startPageToken || null;
+    return Bacon.once()
+      .flatMap(() => {
+        if (!pageToken) {
+          return this._getStartPageToken();
+        } else {
+          return pageToken;
+        }
+      })
+      .flatMap(token => {
+        let options = {
+          pageToken: token,
+          includeRemoved: true,
+          fields: 'changes, newStartPageToken, nextPageToken'
+        }
+        return this._request(this.drive.changes, 'list', options);
+      })
+      .flatMap(response => {
+        if (response.nextPageToken) {
+          return Bacon.fromPromise(this.listChanges(response.nextPageToken));
+        } else {
+          return [new Bacon.Next(response), new Bacon.End()];
+        }
+      })
+      .flatMap(response => {
+        return Bacon.fromArray(response.changes)
+          .filter(c => c.file)
+          .flatMap(change => {
+            let action;
+            if (change.removed || change.file.trashed || change.file.explicitlyTrashed) {
+              action = 'REMOVE';
+            } else {
+              action = 'UNKNOWN'
+            }
+            return {
+              action: action,
+              properties: change
+            }
+          }).fold([], array, element => {
+            array.push(element);
+            return array;
+          }).flatMap(array => {
+            return {
+              startPageToken: response.newStartPageToken,
+              changes: array
+            };
+          });
+      }).toPromise();
+  }
 
+  _getStartPageToken() {
+    return this._request(this.drive.changes, 'startPageToken')
+      .flatMap(respone => response.startPageToken);
   }
 
   move(fromPath, toPath) {
@@ -357,7 +407,6 @@ export default class GoogleDrive extends StorageProvider {
       .flatMap(searchArgs => {
         return Bacon.fromPromise(this.search(folderName, searchArgs))
           .flatMap(search => {
-            debug('search result for ', folderName, search);
             if (search.files.length) {
               return {
                 id: search.files[0].id,
