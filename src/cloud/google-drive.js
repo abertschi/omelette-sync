@@ -24,6 +24,7 @@ export default class GoogleDrive extends StorageProvider {
     this.auth = options.auth;
     this.retry = options.retry || 10;
     this.basedir = this._addEnding(options.basedir, '/');
+
     this.rootDirId = null;
     this.absoluteRootDirId = null;
 

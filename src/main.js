@@ -1,13 +1,12 @@
 import Watcher from './watcher.js';
 import Storage from './storage.js';
-import UploadQueue from './upload-queue.js';
 import colors from 'colors';
 import readline from 'readline';
 import Q from 'Q';
 import Bacon from 'baconjs';
 import fs from 'fs';
+
 import SyncManager from './sync-manager.js';
-import uploadQueue from './upload-queue.js';
 import getGoogleAuthToken from './cloud/get-google-auth-token.js';
 import GoogleDrive from './cloud/google-drive.js';
 
@@ -44,7 +43,7 @@ getGoogleAuthToken().then(bundle => {
     providers: [drive],
     watchHome: WATCH_HOMEDIR
   });
-  //manager.start();
+  manager.start();
 
   watcher = new Watcher({
     directory: WATCH_HOMEDIR,
@@ -53,7 +52,7 @@ getGoogleAuthToken().then(bundle => {
     type: 'fswatch'
   });
 
-  //watcher.watch();
+  watcher.watch();
 
   watcher.on('index-created', () => {
     Storage.setItem('initdone', new Date());
@@ -67,7 +66,7 @@ getGoogleAuthToken().then(bundle => {
 
   watcher.on('change', change => {
     debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
-    uploadQueue.push(change);
+    manager.queueUpload(change);
   });
 });
 

@@ -8,17 +8,29 @@ let debug = require('debug')('bean:app');
 
 import EventEmitter from 'events';
 
-class UploadQueue extends EventEmitter {
+export default class ChangeQueue extends EventEmitter {
 
-  constructor(init = {}) {
+  constructor(options = {}) {
     super();
+    this.tablename = options.tablename;
+
+    if (!this.tablename) {
+      throw new Error('No tablename set');
+    }
   }
 
+  // let change = {
+  //   action: 'ADD | REMOVE | MOVE | DOWNLOAD',
+  //   path: '/any/path/to/file',
+  //   pathOrigin: '/any/path/for/move'
+  //   payload: {
+  //   }
+  // };
   push(change) {
     return this._hasKey(change.action, change.path)
       .filter(found => !found)
       .flatMap(found => {
-        if (change.action == 'MOVE') {
+        if (change.action == 'MOVE' && change.pathOrigin) {
           return this._hasKey(change.action, change.pathOrigin)
             .flatMap(found => found ? this._delete(change.action, change.pathOrigin) : false);
         } else if (change.action == 'REMOVE') {
@@ -73,9 +85,9 @@ class UploadQueue extends EventEmitter {
   }
 
   getFlaggedAsActive() {
-    const QUERY = 'SELECT action, path, json FROM UPLOAD_QUEUE where active=?'
+    const QUERY = `SELECT action, path, json FROM ${this.tablename} where active=?`
 
-    return Bacon.fromNodeCallback(db, 'all', QUERY, [true])
+    return Bacon.fromNodeCallback(db, `all`, QUERY, [true])
       .flatMap(rows => {
         return Bacon.fromArray(rows)
           .filter(row => row);
@@ -88,23 +100,23 @@ class UploadQueue extends EventEmitter {
   }
 
   _hasKey(action, path) {
-    const QUERY = 'SELECT action from UPLOAD_QUEUE where action=? and path=?'
+    const QUERY = `SELECT action from ${this.tablename} where action=? and path=?`
 
-    return Bacon.fromNodeCallback(db, 'get', QUERY, [action, path])
+    return Bacon.fromNodeCallback(db, `get`, QUERY, [action, path])
       .map(row => row ? true : false);
   }
 
   _get(action, path) {
-    const QUERY = 'SELECT json from UPLOAD_QUEUE where action=? and path=?'
+    const QUERY = `SELECT json from ${this.tablename} where action=? and path=?`
 
-    return Bacon.fromNodeCallback(db, 'get', QUERY, [action, path])
+    return Bacon.fromNodeCallback(db, `get`, QUERY, [action, path])
       .map(row => row ? JSON.parse(row.json) : null);
   }
 
   _getOldest() {
-    const QUERY = 'SELECT action, path, json from UPLOAD_QUEUE WHERE active=? ORDER BY date(timestamp) DESC Limit 1'
+    const QUERY = `SELECT action, path, json from ${this.tablename} WHERE active=? ORDER BY date(timestamp) DESC Limit 1`
 
-    return Bacon.fromNodeCallback(db, 'get', QUERY, [0])
+    return Bacon.fromNodeCallback(db, `get`, QUERY, [0])
       .map(row => {
         if (row) {
           return {
@@ -119,49 +131,47 @@ class UploadQueue extends EventEmitter {
   }
 
   _deleteWithinPath(path) {
-    const QUERY = 'DELETE FROM UPLOAD_QUEUE where path LIKE ?'
+    const QUERY = `DELETE FROM ${this.tablename} where path LIKE ?`
 
-    return Bacon.fromNodeCallback(db, 'get', QUERY, [`${path}%`])
+    return Bacon.fromNodeCallback(db, `get`, QUERY, [`${path}%`])
       .map(row => row ? true : false);
   }
 
   _delete(action, path) {
-    const QUERY = 'DELETE FROM UPLOAD_QUEUE where action=? and path=?'
+    const QUERY = `DELETE FROM ${this.tablename} where action=? and path=?`
 
-    return Bacon.fromNodeCallback(db, 'get', QUERY, [action, path])
+    return Bacon.fromNodeCallback(db, `get`, QUERY, [action, path])
       .map(row => row ? true : false);
   }
 
   _add(action, path, payload = {}) {
-    const QUERY = 'INSERT INTO UPLOAD_QUEUE (action, path, json) VALUES (?, ?, ?)';
+    const QUERY = `INSERT INTO ${this.tablename} (action, path, json) VALUES (?, ?, ?)`;
 
     return this._hasKey(action, path)
       .flatMap(found => found ? this._delete(action, path) : null)
-      .flatMap(() => Bacon.fromNodeCallback(db, 'get', QUERY, action, path, JSON.stringify(payload)))
+      .flatMap(() => Bacon.fromNodeCallback(db, `get`, QUERY, action, path, JSON.stringify(payload)))
       .map(() => true);
   }
 
   _size() {
-    const QUERY = 'SELECT COUNT(*) as count FROM UPLOAD_QUEUE';
+    const QUERY = `SELECT COUNT(*) as count FROM ${this.tablename}`;
 
-    return Bacon.fromNodeCallback(db, 'get', QUERY, [])
+    return Bacon.fromNodeCallback(db, `get`, QUERY, [])
       .map(found => found.count);
   }
 
   _setActiveFlag(action, path, flag) {
-    const QUERY = 'UPDATE UPLOAD_QUEUE SET active=? WHERE action=? and path=?';
+    const QUERY = `UPDATE ${this.tablename} SET active=? WHERE action=? and path=?`;
 
-    return Bacon.fromNodeCallback(db, 'get', QUERY, [flag, action, path]);
+    return Bacon.fromNodeCallback(db, `get`, QUERY, [flag, action, path]);
   }
 
   _emitQueueStatus() {
     return this.getSize()
       .then(size => {
         debug(size);
-        let emit = size == 0 ? 'empty' : 'not-empty';
+        let emit = size == 0 ? `empty` : `not-empty`;
         this.emit(emit);
       });
   }
 }
-
-export default new UploadQueue();
