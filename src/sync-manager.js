@@ -4,6 +4,9 @@ let debug = require('debug')('bean:app');
 import Bacon from 'baconjs';
 import Encryption from './encryption.js';
 import fs from 'fs';
+import Providers from './cloud/providers.js';
+
+const ENCRYPTED_ENDING = '.enc';
 
 export default class SyncManager {
 
@@ -15,9 +18,19 @@ export default class SyncManager {
     this._running = false;
     this.started = false;
     this.bufferSize = 0;
+    this.providerDelegate = new Providers(this.providers);
+
+    this.enableEncryption = options.enableEncryption || false;
+    this.encryptFileNames = options.encryptFileNames || false; // TODO impl.
+    this.encryptionPassword = options.encryptionPassword;
+
+    if (this.enableEncryption && ! encryptionPassword) {
+      throw new Error('No password set for encryption');
+    }
+
     this.encryption = new Encryption({
-      password: 'bean'
-    })
+      password: this.encryptionPassword
+    });
 
     if (!this.watchHome) {
       throw new Error('No watch home dir');
@@ -45,6 +58,14 @@ export default class SyncManager {
     return this.providers.length ? this.providers[0] : null;
   }
 
+  _createStream(location) {
+    let stream = fs.createReadStream(location);
+    if (this.enableEncryption) {
+      return this.encryption.encryptStream(stream);
+    } else {
+      return stream;
+    }
+  }
 
   async _run() {
     if (this._running && this.bufferSize < this.uploadsAtOnce) {
@@ -64,13 +85,12 @@ export default class SyncManager {
         switch (upload.action) {
           case 'ADD':
           case 'CHANGE':
-            //let stream = this.encryption.encryptStream(fs.createReadStream(upload.path));
-            //let stream = fs.createReadStream(upload.path);
             let addPromise;
             if (upload.isDir) {
               addPromise = provider.createFolder(targetPath);
             } else{
-              addPromise = provider.upload(upload.path, targetPath);
+              let upstream = this._createStream(upload.path);
+              addPromise = provider.upload(upstream, targetPath);
             }
             this._markAsDoneIfNoError(addPromise, upload);
             break;
@@ -86,7 +106,6 @@ export default class SyncManager {
           default:
             debug('Unknown change type', change);
         }
-
       } else {
         this.bufferSize --;
       }

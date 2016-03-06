@@ -6,12 +6,29 @@
 
       constructor(options = {}) {
         this.password = options.password;
-        this.algorithm = options.algorithm || 'aes-256-ecb';
+        this.algorithm = options.algorithm || 'aes-256-cbc';
       }
 
+      _isStream(readable) {
+        return readable instanceof stream.Readable;
+      }
+
+      encrypt(text) {
+        let encrypt = crypto.createCipher(this.algorithm, this.password);
+        cipher.update(text, 'utf8', 'base64');
+        return cipher.final('base64')
+      }
+
+      decrypt(text) {
+        let decypt = crypto.createDecipher(this.algorithm, this.password);
+        decypt.update(text, 'utf8', 'base64');
+        return decypt.final('base64')
+      }
+
+
+      // manually with openssl: openssl enc -in bean.txt -d -aes-256-cbc -out bean.done.txt -nosalt
       encryptStream(stream) {
         let encrypt = crypto.createCipher(this.algorithm, this.password);
-
         return stream.on('error', error => {
           debug(error, error.stack);
           throw error;
@@ -22,7 +39,13 @@
       }
 
       decryptStream(stream) {
-        return stream.on('error', err => {}).pipe(this.decrypt).on('error', err => {});
+        return stream.on('error', err => {
+          debug(err);
+          throw error;
+        }).pipe(this.decrypt).on('error', err => {
+          debug(err);
+          throw err;
+        });
       }
     }
 
