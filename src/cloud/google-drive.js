@@ -13,8 +13,7 @@ var path = require('path');
 var Promise = require('bluebird');
 
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
-const ROOT_NAME_DRIVE = 'My Drive';
-const BACON_SEQUENTIAL_WAIT = 50;
+const BACON_SEQUENTIAL_WAIT = 10;
 
 const BASE_URL = 'https://www.googleapis.com/drive/v3';
 
@@ -36,8 +35,6 @@ export default class GoogleDrive extends StorageProvider {
   }
 
   remove(location) {
-    location = this._qualifyDirectory(location);
-
     return Bacon.fromPromise(this.getFileMetaByPath(location))
       .flatMap(found => {
         return Bacon.fromPromise(this.removeById(found.id))
@@ -67,13 +64,13 @@ export default class GoogleDrive extends StorageProvider {
     let toMetaStream = Bacon.fromPromise(this.createFolder(basedir));
 
     return Bacon.zipWith(fromMetaStream, toMetaStream, (fromMeta, toMeta) => {
-      debug(fromMeta, toMeta);
-      return {
-        source: fromMeta,
-        target: toMeta
-      };
-    })
-    .flatMap(meta => {
+        debug(fromMeta, toMeta);
+        return {
+          source: fromMeta,
+          target: toMeta
+        };
+      })
+      .flatMap(meta => {
         return Bacon.fromPromise(this.getFileMeta(meta.source.id))
           .flatMap(sourceDetails => {
             let options = {
@@ -81,7 +78,7 @@ export default class GoogleDrive extends StorageProvider {
               removeParents: sourceDetails.parents,
               addParents: [meta.target.properties.id],
               resource: {
-                  name: filename,
+                name: filename,
               }
             }
             return this._request(this.drive.files, 'update', options)
@@ -94,46 +91,43 @@ export default class GoogleDrive extends StorageProvider {
               }
             };
           })
-    })
-    .endOnError()
-    .toPromise();
+      })
+      .endOnError()
+      .toPromise();
+  }
+
+  _isStream(readable) {
+    return readable instanceof stream.Readable;
   }
 
   upload(source, targetPath, properties = {}) {
     let dirname = path.dirname(targetPath);
     let basename = path.basename(targetPath);
 
-    return Bacon.fromNodeCallback(fs, 'stat', source)
-      .flatMap(stats => {
-        return Bacon.fromPromise(this.createFolder(dirname))
-          .flatMap(res => {
-            let parentId = res.properties.id;
-            if (stats.isFile()) {
-              return Bacon.fromPromise(this.search(basename))
-                .flatMap(search => {
-                  if (search && search.files && search.files.length) {
-                    return Bacon.fromArray(search.files)
-                      .flatMap(file => Bacon.fromPromise(this.removeById(file.id)));
-                  } else {
-                    return Bacon.once();
-                  }
-                })
-                .flatMap(() => this._uploadWithParentId(source, basename, parentId)); // TODO: double id
+    return Bacon.fromPromise(this.createFolder(dirname))
+      .flatMap(res => {
+        let parentId = res.properties.id;
+        return Bacon.fromPromise(this.search(basename))
+          .flatMap(search => {
+            if (search && search.files && search.files.length) {
+              return Bacon.fromArray(search.files)
+                .flatMap(file => Bacon.fromPromise(this.removeById(file.id)));
             } else {
-              return Bacon.fromPromise(this.createSingleFolder(basename, parentId));
+              return Bacon.once();
             }
           })
-          .map(response => {
-            return {
-              properties: {
-                id: response ? response.id || null : null
-              }
-            }
-          });
+          .flatMap(() => this._uploadWithParentId(source, basename, parentId)); // TODO: double id
       })
-      .doAction(() => debug(`Upload of ${targetPath} done.`))
-      .endOnError()
-      .toPromise();
+      .map(response => {
+        return {
+          properties: {
+            id: response ? response.id || null : null
+          }
+        }
+      })
+    .doAction(() => debug(`Upload of ${targetPath} done.`))
+    .endOnError()
+    .toPromise();
   }
 
   createFolder(basedir) {
@@ -157,7 +151,6 @@ export default class GoogleDrive extends StorageProvider {
   }
 
   _uploadWithParentId(source, name, parentId) {
-    debug('upload from ', source, name, parentId);
     return Bacon.once()
       .flatMap(() => {
         if (source instanceof stream.Readable) {
@@ -166,12 +159,12 @@ export default class GoogleDrive extends StorageProvider {
           try {
             let stream = fs.createReadStream(source);
             stream.on('error', (e) => {
-                debug('Error in stream', e, e.stack);
-                return new Bacon.Error(e);
-                // TODO: Error handling streams
+              debug('Error in stream', e, e.stack);
+              return new Bacon.Error(e);
+              // TODO: Error handling streams
             });
             return stream;
-          } catch(e) {
+          } catch (e) {
             return new Bacon.Error(e);
           }
         }
@@ -327,7 +320,7 @@ export default class GoogleDrive extends StorageProvider {
       .flatMap(searchArgs => {
         return Bacon.fromPromise(this.search(folderName, searchArgs))
           .flatMap(search => {
-            debug('search result for ',folderName, search);
+            debug('search result for ', folderName, search);
             if (search.files.length) {
               return {
                 id: search.files[0].id,
@@ -435,22 +428,20 @@ export default class GoogleDrive extends StorageProvider {
 
   _request(object, name, options) {
     let source = Bacon.fromPromise(new Promise((resolve, reject) => {
-      process.nextTick(function() {
-        try {
-          let result = object[name](options, (err, response) => {
-            if (err) {
-              reject(err, result);
-            } else {
-              resolve(response, result);
-            }
-          }).on('error', (err) => {
+      try {
+        let result = object[name](options, (err, response) => {
+          if (err) {
             reject(err, result);
-          });
+          } else {
+            resolve(response, result);
+          }
+        }).on('error', (err) => {
+          reject(err, result);
+        });
 
-        } catch (e) {
-          reject(e, result);
-        }
-      });
+      } catch (e) {
+        reject(e, result);
+      }
     }));
 
     return Bacon.retry({

@@ -2,6 +2,8 @@ import uploadQueue from './upload-queue.js';
 import isNetworkError from './cloud/is-network-error.js';
 let debug = require('debug')('bean:app');
 import Bacon from 'baconjs';
+import Encryption from './encryption.js';
+import fs from 'fs';
 
 export default class SyncManager {
 
@@ -9,10 +11,13 @@ export default class SyncManager {
     this.providers = options.providers || [];
     this.strategy = options.strategy || 'first-full'; // 'distribute'
     this.watchHome = options.watchHome;
-    this.uploadsAtOnce = options.uploadsAtOnce || 7;
+    this.uploadsAtOnce = options.uploadsAtOnce || 1;
     this._running = false;
     this.started = false;
     this.bufferSize = 0;
+    this.encryption = new Encryption({
+      password: 'bean'
+    })
 
     if (!this.watchHome) {
       throw new Error('No watch home dir');
@@ -42,7 +47,6 @@ export default class SyncManager {
 
 
   async _run() {
-    debug('new iteration');
     if (this._running && this.bufferSize < this.uploadsAtOnce) {
       this.bufferSize++;
 
@@ -60,7 +64,14 @@ export default class SyncManager {
         switch (upload.action) {
           case 'ADD':
           case 'CHANGE':
-            let addPromise = provider.upload(upload.path, targetPath);
+            //let stream = this.encryption.encryptStream(fs.createReadStream(upload.path));
+            //let stream = fs.createReadStream(upload.path);
+            let addPromise;
+            if (upload.isDir) {
+              addPromise = provider.createFolder(targetPath);
+            } else{
+              addPromise = provider.upload(upload.path, targetPath);
+            }
             this._markAsDoneIfNoError(addPromise, upload);
             break;
             case 'MOVE':
