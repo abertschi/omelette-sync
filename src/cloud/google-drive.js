@@ -57,6 +57,42 @@ export default class GoogleDrive extends StorageProvider {
     return this.basedir;
   }
 
+  download(location, writeStream, properties = {}) {
+    let fileId = properties.id || null;
+
+    return Bacon.once()
+      .flatMap(() => {
+        if (properties.id) {
+          return properties.id;
+        } else {
+          return Bacon.fromPromise(this.getFileMetaByPath(location))
+            .flatMap(meta => meta.id);
+        }
+      })
+      .flatMap(fileId => {
+        let options = {
+          fileId: fileId,
+          alt: 'media'
+        };
+
+        return Bacon.fromBinder(sink => {
+          this.drive.files.get(options)
+            .on('end', () => {
+              sink([new Bacon.Next(), new Bacon.End()]);
+            })
+            .on('error', (err) => {
+              sink(new Bacon.Error(err));
+            }).pipe(writeStream);
+        })
+      })
+      .endOnError()
+      .toPromise();
+  }
+
+  listChanges() {
+
+  }
+
   move(fromPath, toPath) {
     let fromMetaStream = Bacon.fromPromise(this.getFileMetaByPath(fromPath));
     let basedir = path.dirname(toPath);
@@ -125,9 +161,9 @@ export default class GoogleDrive extends StorageProvider {
           }
         }
       })
-    .doAction(() => debug(`Upload of ${targetPath} done.`))
-    .endOnError()
-    .toPromise();
+      .doAction(() => debug(`Upload of ${targetPath} done.`))
+      .endOnError()
+      .toPromise();
   }
 
   createFolder(basedir) {
@@ -429,30 +465,36 @@ export default class GoogleDrive extends StorageProvider {
   _request(object, name, options) {
     let source = Bacon.fromPromise(new Promise((resolve, reject) => {
       try {
-        let result = object[name](options, (err, response) => {
+        let request = object[name](options, (err, response) => {
           if (err) {
-            reject(err, result);
+            reject(err, request);
           } else {
-            resolve(response, result);
+            resolve(response, request);
           }
         }).on('error', (err) => {
-          reject(err, result);
+          reject(err, request);
         });
-
       } catch (e) {
-        reject(e, result);
+        reject(e, request);
       }
     }));
 
+    return this._retryOnError(source);
+  }
+
+  _retryOnError(eventStream, beforeRetry) {
     return Bacon.retry({
       source: function() {
-        return source;
+        return eventStream;
       },
       retries: this.retry,
       isRetryable: function(error) {
         let retryable = isNetworkError(error);
         if (retryable) {
-          debug(`Network or HTTP error (${error.code}) occurred while (google-drive:${name}).`.red);
+          if (beforeRetry) {
+            beforeRetry(error);
+          }
+          debug(`Network or HTTP error (${error.code}) occurred while (google-drive).`.red);
           debug(`${error.stack}`.red);
         }
         return retryable;

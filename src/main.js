@@ -35,11 +35,16 @@ getGoogleAuthToken().then(bundle => {
     basedir: '/omelettes/'
   });
 
+  let stream = fs.createWriteStream('/tmp/download.txt');
+  drive.download('bean.txt', stream)
+    .then(e => debug('done', e))
+    .catch(e => debug('error', e));
+
   let manager = new SyncManager({
     providers: [drive],
     watchHome: WATCH_HOMEDIR
   });
-  manager.start();
+  //manager.start();
 
   watcher = new Watcher({
     directory: WATCH_HOMEDIR,
@@ -48,7 +53,7 @@ getGoogleAuthToken().then(bundle => {
     type: 'fswatch'
   });
 
-  watcher.watch();
+  //watcher.watch();
 
   watcher.on('index-created', () => {
     Storage.setItem('initdone', new Date());

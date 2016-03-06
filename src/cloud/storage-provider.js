@@ -6,6 +6,10 @@ class Provider {
     };
   }
 
+  fetchChanges() {
+    
+  }
+
   createFolder(location, properties = {}) {
     return {
       properties: {}
@@ -48,7 +52,7 @@ class Provider {
   }
 
   getRootDir() {
-
+    return '/path/to/omelette-sync-root/';
   }
 
   getStorage(properties = {}) {
