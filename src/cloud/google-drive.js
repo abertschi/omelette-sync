@@ -15,6 +15,13 @@ var Promise = require('bluebird');
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const BACON_SEQUENTIAL_WAIT = 10;
 
+
+let sample = {
+  name: 'folder',
+  type: FOLDER_MIME_TYPE,
+  children: [sample]
+}
+
 export default class GoogleDrive extends StorageProvider {
 
   constructor(options = {}) {
@@ -39,7 +46,10 @@ export default class GoogleDrive extends StorageProvider {
         return Bacon.fromPromise(this.removeById(found.id))
           .flatMap(() => {
             return {
-              properties: []
+              properties: {
+                id: found.id,
+                name: found.name
+              }
             }
           });
       })
@@ -173,8 +183,8 @@ export default class GoogleDrive extends StorageProvider {
           .flatMap(result => {
             return {
               properties: {
-                sourceId: meta.source.id,
-                targetId: meta.target,
+                idOrigin: meta.source.id,
+                id: meta.target,
               }
             };
           })
@@ -185,6 +195,14 @@ export default class GoogleDrive extends StorageProvider {
 
   _isStream(readable) {
     return readable instanceof stream.Readable;
+  }
+
+  _getMostInnerChild(tree) {
+    if (tree.child) {
+      return this._getMostInnerChild(tree.child);
+    } else {
+      return tree;
+    }
   }
 
   upload(source, targetPath, properties = {}) {
@@ -203,14 +221,20 @@ export default class GoogleDrive extends StorageProvider {
               return Bacon.once();
             }
           })
-          .flatMap(() => this._uploadWithParentId(source, basename, parentId)); // TODO: double id
-      })
-      .map(response => {
-        return {
-          properties: {
-            id: response ? response.id || null : null
-          }
-        }
+          .flatMap(() => this._uploadWithParentId(source, basename, parentId))
+          .flatMap(response => {
+            let tree = res.properties.tree;
+            let child = this._getMostInnerChild(tree);
+            child.name = basename;
+            child.id = response.id;
+
+            return {
+              properties: {
+                id: response.id,
+                tree: tree
+              }
+            };
+          });
       })
       .doAction(() => debug(`Upload of ${targetPath} done.`))
       .endOnError()
@@ -220,15 +244,17 @@ export default class GoogleDrive extends StorageProvider {
   createFolder(basedir) {
     basedir = this._qualifyDirectory(basedir);
     let childdirs = basedir.split('/').filter(a => a.trim() != '');
-
+    let tree = {};
     return Bacon.fromPromise(this._getAbsoluteRootDirId())
       .flatMap(id => {
-        return Bacon.fromPromise(this._createFoldersRecursively(id, childdirs))
+        tree.id = id;
+        return Bacon.fromPromise(this._createFoldersRecursively(id, childdirs, 0, tree))
       })
       .flatMap(result => {
         return {
           properties: {
-            id: result.id
+            id: result.id,
+            tree: tree
           }
         };
       })
@@ -272,7 +298,8 @@ export default class GoogleDrive extends StorageProvider {
         return this._request(this.drive.files, 'create', upload)
           .flatMap(result => {
             return {
-              id: result
+              id: result.id,
+              name: name
             };
           });
       });
@@ -428,15 +455,15 @@ export default class GoogleDrive extends StorageProvider {
       .toPromise();
   }
 
-  _createFoldersRecursively(parentId, directories, directoryIndex = 0) {
+  _createFoldersRecursively(parentId, directories, directoryIndex = 0, tree = {}) {
     return Promise.resolve(this.createSingleFolder(directories[directoryIndex], parentId))
-      .then(successful => {
+      .then(folder => {
+        tree.child = folder;
         directoryIndex++;
         if (directoryIndex < directories.length) {
-          return this._createFoldersRecursively(successful.id, directories, directoryIndex);
+          return this._createFoldersRecursively(folder.id, directories, directoryIndex, tree.child);
         } else {
-          //debug('All folders [%s] created. child id: %s', directories, successful.id);
-          return successful;
+          return folder;
         }
       });
   }

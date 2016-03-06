@@ -5,6 +5,7 @@ import Bacon from 'baconjs';
 import Encryption from './encryption.js';
 import fs from 'fs';
 import Providers from './cloud/providers.js';
+let util = require('util');
 
 const KEEP_ALIVE_FREQUENCY = 1000;
 
@@ -69,6 +70,8 @@ export default class ChangeRunner {
   _markAsDoneIfNoError(promise, change) {
     promise
       .then(then => {
+        debug(JSON.stringify(then));
+
         this.queue.flagAsDone(change);
         this._changesActive--;
       })
