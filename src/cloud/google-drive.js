@@ -128,14 +128,22 @@ export default class GoogleDrive extends StorageProvider {
           .filter(c => c.file)
           .flatMap(change => {
             let action;
+            let parentId;
             if (change.removed || change.file.trashed || change.file.explicitlyTrashed) {
               action = 'REMOVE';
             } else {
               action = 'UNKNOWN'
+              let parents = change.file.parents;
+              if (parents && parents.length) {
+                parentId = parents[0];
+              }
             }
             return {
               action: action,
-              properties: change
+              properties: {
+                id: change.fileId,
+                parentId: parentId
+              }
             }
           }).fold([], array, element => {
             array.push(element);
@@ -341,6 +349,24 @@ export default class GoogleDrive extends StorageProvider {
     }
   }
 
+  getPathByFileId(fileId) {
+    let followUp = (fileId) => {
+      return Bacon.fromPromise(this.getFileMeta(fileId))
+        .flatMap(meta => {
+          if (meta.parents && meta.parents.length) {
+            return followUp(meta.parents[0].id);
+          } else {
+            return meta.name;
+          }
+        })
+        .fold('', (path, name) => {
+          path += '/' + name;
+          return path;
+        });
+    };
+    return followUp(fileId).toPromise();
+  }
+
   getFileMetaByPath(directory) {
     directory = this._qualifyDirectory(directory);
     let tree = directory.split('/').filter(a => a.trim() != '');
@@ -385,6 +411,7 @@ export default class GoogleDrive extends StorageProvider {
             });
         }
       })
+      .doAction(f => debug(JSON.stringify(f)))
       .toPromise();
   }
 
@@ -476,10 +503,14 @@ export default class GoogleDrive extends StorageProvider {
         // no scenario is familiar where a file has more than 1 parents
         // always stick to first parent
         let parentId = file.parents[0];
+        let tree = {
+          id: file.id,
+          name: file.name
+        }
         return Bacon
-          .fromPromise(this._followParents(parentId, parentDirectories))
+          .fromPromise(this._followParents(parentId, parentDirectories, 0, tree))
           .filter(found => found)
-          .flatMap(() => Bacon.fromArray([new Bacon.Next(file), new Bacon.End()]));
+          .flatMap(() => Bacon.fromArray([new Bacon.Next(tree), new Bacon.End()]));
       })
       .fold([], (array, file) => {
         array.push(file);
@@ -490,21 +521,23 @@ export default class GoogleDrive extends StorageProvider {
           return Bacon.once(new Bacon.Error(`No file found with parents [${parentDirectories}]`));
         } else {
           let file = array[0];
-          return Bacon.once({
-            id: file.id,
-          });
+          return Bacon.once(file);
         }
       })
       .firstToPromise();
   }
 
-  _followParents(parentId, directories = [], index = 0) {
+  _followParents(parentId, directories = [], index = 0, tree = {}) {
     return this.getFileMeta(parentId)
       .then(file => {
+        tree.parent = {
+          id: file.id,
+          name: file.name
+        };
         if (file.name == directories[index]) {
           if (file.parents.length && index < directories.length) {
             index++
-            return this._followParents(file.parents[0], directories, index);
+            return this._followParents(file.parents[0], directories, index, tree.parent);
           } else {
             //debug('parent %s (%s) matches directory tree %s', file.id, file.name, directories);
             return true;

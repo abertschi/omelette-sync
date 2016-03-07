@@ -3,11 +3,11 @@ import db from '../db.js';
 import path from 'path';
 let debug = require('debug')('bean:index');
 
-export default function addToIndex(file, rootDirectory) {
+export default function addToIndex(file) {
   switch (file.action) {
     case 'ADD':
     case 'MOVE':
-      return addOrMove(file, rootDirectory);
+      return addOrMove(file);
       break;
 
     case 'REMOVE':
