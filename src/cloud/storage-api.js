@@ -62,7 +62,7 @@ class StorageApi {
     };
   }
 
-  getRootDir() {
+  getMountDir() {
     return '/path/to/omelette-sync-root/';
   }
 

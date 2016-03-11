@@ -31,13 +31,9 @@ getGoogleAuthToken().then(bundle => {
 
   let drive = new GoogleDrive({
     auth: bundle.auth,
-    basedir: '/omelettes/'
+    mountDir: '/omelettes/',
+    watchHome: WATCH_HOMEDIR
   });
-
-  let stream = fs.createWriteStream('/tmp/download.txt');
-  drive.getStorage()
-    .then(e => debug('done', JSON.stringify(e)))
-    .catch(e => debug('error', e));
 
   let manager = new SyncManager({
     providers: [drive],

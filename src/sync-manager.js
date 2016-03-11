@@ -16,7 +16,6 @@ export default class SyncManager {
 
   constructor(options = {}) {
     this.providers = options.providers || [];
-    this._providerDelegate = new Providers(this.providers);
 
     this.uploadStrategy = options.uploadStrategy || 'first-full'; /// 'distribute'
     this.watchHome = options.watchHome;
@@ -73,36 +72,8 @@ export default class SyncManager {
   }
 
   async nextUpload(change) {
-    debug(change);
-    let targetPath = change.path.replace(this.watchHome, '');
     let provider = this._getProvider();
-    let promise;
-
-    switch (change.action) {
-      case 'ADD':
-      case 'CHANGE':
-        if (change.isDir) {
-          promise = provider.createFolder(targetPath);
-          promise.then(done => {
-            debug('INTERCEPTED THEN', done);
-            return done;
-          });
-        } else {
-          let upstream = this._createReadStream(change.path);
-          promise = provider.upload(upstream, targetPath);
-        }
-        break;
-      case 'MOVE':
-        let fromPath = change.pathOrigin.replace(this.watchHome, '');
-        promise = provider.move(fromPath, targetPath);
-        break;
-      case 'REMOVE':
-        promise = provider.remove(targetPath);
-        break;
-      default:
-        debug('Unknown change type', change);
-    }
-    return promise;
+    return provider.doUpload(change);
   }
 
   async _nextDownload(change) {

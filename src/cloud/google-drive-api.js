@@ -28,7 +28,7 @@ export default class GoogleDriveApi extends StorageApi {
     super();
     this.auth = options.auth;
     this.retry = options.retry || 10;
-    this.mountDir = this._addSuffixAndPrefix(options.basedir, '/', '/');
+    this.mountDir = this._addSuffixAndPrefix(options.mountDir, '/', '/');
 
     this._syncRoot = null;
     this._rootDir = null;
@@ -87,7 +87,7 @@ export default class GoogleDriveApi extends StorageApi {
     }
   }
 
-  getRootDir() { // todo change
+  getMountDir() {
     return this.mountDir;
   }
 
