@@ -3,7 +3,7 @@ import db from '../db.js';
 import path from 'path';
 let debug = require('debug')('bean:index');
 
-const SQL = 'SELECT file_id, path, is_dir FROM DIRECTORY_INDEX WHERE path LIKE ? and file_id != ?';
+const SQL = 'SELECT client_id, path, is_dir FROM DIRECTORY_INDEX WHERE path LIKE ? and client_id != ?';
 
 export default function getChildrenOfDirectoryFromIndex(dir) {
   return Bacon.fromBinder(sink => {
@@ -13,7 +13,7 @@ export default function getChildrenOfDirectoryFromIndex(dir) {
 
         if (path.dirname(row.path) == dir.path) {
           result.push({
-            id: row.file_id,
+            id: row.client_id,
             path: row.path,
             isDir: row.is_dir
           });

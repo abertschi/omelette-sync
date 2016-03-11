@@ -35,8 +35,8 @@ getGoogleAuthToken().then(bundle => {
   });
 
   let stream = fs.createWriteStream('/tmp/download.txt');
-  drive.download('bean.txt', stream)
-    .then(e => debug('done', e))
+  drive.createFolder('/test/bean/haha/gz/bean')
+    .then(e => debug('done', JSON.stringify(e)))
     .catch(e => debug('error', e));
 
   let manager = new SyncManager({

@@ -83,6 +83,10 @@ export default class SyncManager {
       case 'CHANGE':
         if (change.isDir) {
           promise = provider.createFolder(targetPath);
+          promise.then(done => {
+            debug('INTERCEPTED THEN', done);
+            return done;
+          });
         } else {
           let upstream = this._createReadStream(change.path);
           promise = provider.upload(upstream, targetPath);

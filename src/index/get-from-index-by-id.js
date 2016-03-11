@@ -2,7 +2,7 @@ import Bacon from 'baconjs';
 import db from '../db.js';
 let debug = require('debug')('bean:index');
 
-const QUERY = 'SELECT is_dir, path from DIRECTORY_INDEX where file_id=?;';
+const QUERY = 'SELECT is_dir, path from DIRECTORY_INDEX where client_id=?;';
 
 export default function getFromIndexById(fileId) {
   return Bacon

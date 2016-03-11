@@ -22,21 +22,21 @@ export default function addToIndex(file) {
 
 function addOrMove(file) {
 
-  const INSERT = 'INSERT INTO DIRECTORY_INDEX(file_id, path, is_dir) VALUES (?, ?, ?)';
-  const UPDATE = 'UPDATE DIRECTORY_INDEX SET path=? WHERE file_id=?';
+  const INSERT = 'INSERT INTO DIRECTORY_INDEX(client_id, path, is_dir) VALUES (?, ?, ?)';
+  const UPDATE = 'UPDATE DIRECTORY_INDEX SET path=? WHERE client_id=?';
 
-  const SELECT = 'SELECT file_id from DIRECTORY_INDEX where file_id=?'
-  const SELECT_FOR_PATH = 'SELECT file_id, path FROM DIRECTORY_INDEX WHERE path LIKE ?';
+  const SELECT = 'SELECT client_id from DIRECTORY_INDEX where client_id=?'
+  const SELECT_FOR_PATH = 'SELECT client_id, path FROM DIRECTORY_INDEX WHERE path LIKE ?';
 
   return Bacon.fromBinder(sink => {
     db.get(SELECT, [file.id], function(err, indexRow) {
       if (indexRow) {
         debug('check for undefined (index, file)', indexRow, file);
 
-        db.run(UPDATE, [file.path, indexRow.file_id], () => {
-          debug('Updated %s (%s)', file.path, indexRow.file_id);
+        db.run(UPDATE, [file.path, indexRow.client_id], () => {
+          debug('Updated %s (%s)', file.path, indexRow.client_id);
           sink({
-            id: indexRow.file_id,
+            id: indexRow.client_id,
             action: 'updated'
           });
         });
@@ -47,12 +47,12 @@ function addOrMove(file) {
 
           rows.forEach(row => {
             let path = row.path.replace(PARENT_DIR_ORIGIN, PARENT_DIR_NEW);
-            debug('Updating path of %s from %s to %s', row.file_id, row.path, path);
+            debug('Updating path of %s from %s to %s', row.client_id, row.path, path);
 
-            db.run(UPDATE, [path, row.file_id], () => {
-              debug('Updated %s to %s', row.file_id, path);
+            db.run(UPDATE, [path, row.client_id], () => {
+              debug('Updated %s to %s', row.client_id, path);
               sink({
-                id: row.file_id,
+                id: row.client_id,
                 action: 'updated'
               });
             });

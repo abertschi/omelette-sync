@@ -1,12 +1,12 @@
 class Provider {
 
-  upload(source, location, properties = {}) {
+  upload(source, location) {
     return {
       properties: {}
     };
   }
 
-  listChanges(since, properties = {}) {
+  listChanges(since) {
     return {
       changes: [{
         action: 'REMOVE',
@@ -46,13 +46,13 @@ class Provider {
     };
   }
 
-  remove(location, properties = {}) {
+  remove(location) {
     return {
       properties: {}
     };
   }
 
-  move(locationFrom, locationTo, properties = {}) {
+  move(locationFrom, locationTo) {
     return {
       properties: {}
     };
@@ -62,7 +62,7 @@ class Provider {
     return '/path/to/omelette-sync-root/';
   }
 
-  getStorage(properties = {}) {
+  getStorage() {
     return {
       total: null,
       used: null,

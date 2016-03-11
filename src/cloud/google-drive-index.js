@@ -1,8 +1,6 @@
 export default class GoogleDriveIndex {
 
-
-
-  postUpload(source, targetPath, properties, response) {
+  postUpload(request, response) {
 
   }
 
