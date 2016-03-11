@@ -1,9 +1,13 @@
-class Provider {
+class StorageApi {
 
   upload(source, location) {
     return {
       properties: {}
     };
+  }
+
+  getUserId() {
+    return 'any-id-which-identifies-the-priver-and-account';
   }
 
   listChanges(since) {
@@ -71,4 +75,4 @@ class Provider {
   }
 };
 
-export default Provider;
+export default StorageApi;

@@ -27,7 +27,7 @@ if (lastrun && initDone) {
 }
 
 getGoogleAuthToken().then(bundle => {
-  debug('Got auth bundle');
+  debug('Got auth bundle', bundle);
 
   let drive = new GoogleDrive({
     auth: bundle.auth,
@@ -35,7 +35,7 @@ getGoogleAuthToken().then(bundle => {
   });
 
   let stream = fs.createWriteStream('/tmp/download.txt');
-  drive.createFolder('/test/bean/haha/gz/bean')
+  drive.getStorage()
     .then(e => debug('done', JSON.stringify(e)))
     .catch(e => debug('error', e));
 
