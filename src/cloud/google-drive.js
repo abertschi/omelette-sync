@@ -1,6 +1,11 @@
 import GoogleDriveApi from './google-drive-api.js';
 let debug = require('debug')('bean:app');
 import fs from 'fs';
+import Settings from './../settings.js';
+import Bacon from 'baconjs';
+
+const LAST_PAGE_TOKEN_PREFIX = 'last_page_token_';
+
 export default class GoogleDrive {
 
   constructor(options = {
@@ -13,6 +18,7 @@ export default class GoogleDrive {
       mountDir: options.mountDir
     });
     this.watchHome = options.watchHome;
+    this._driveId;
 
     let stream = fs.createWriteStream('/tmp/download.txt');
     this.drive.getStorage()
@@ -51,15 +57,34 @@ export default class GoogleDrive {
     return promise;
   }
 
-  pullChanges() {
-    let lastPageToken = null;
+  async pullChanges() {
+    let lastPageTokenKey = await this._getDriveId();
+    let lastPageToken = await Settings.get(lastPageTokenKey);
+    debug(lastPageTokenKey, lastPageToken);
     return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
       .flatMap(changes => {
+        Settings.set(lastPageTokenKey, changes.startPageToken);
         return Bacon.fromArray(changes.changes)
           .flatMap(change => {
             debug(change);
+            return {
+              action: 'UNKNOWN',
+              id: 'unknown'
+            };
           });
       });
+  }
+
+  async _getDriveId() {
+    if (!this._driveId) {
+      return this.drive.getUserId()
+        .then(id => {
+          this._driveId = LAST_PAGE_TOKEN_PREFIX + id;
+          return id;
+        });
+    } else {
+      return Bacon.once(this._driveId).toPromise();
+    }
   }
 
   doDownload(file) {

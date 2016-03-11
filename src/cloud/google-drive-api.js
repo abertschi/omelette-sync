@@ -15,7 +15,6 @@ var Promise = require('bluebird');
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const BACON_SEQUENTIAL_WAIT = 10;
 
-
 let sample = {
   name: 'folder',
   type: FOLDER_MIME_TYPE,
@@ -149,10 +148,11 @@ export default class GoogleDriveApi extends StorageApi {
         if (response.nextPageToken) {
           return Bacon.fromPromise(this.listChanges(response.nextPageToken));
         } else {
-          return [new Bacon.Next(response), new Bacon.End()];
+          return Bacon.fromArray([new Bacon.Next(response), new Bacon.End()]);
         }
       })
       .flatMap(response => {
+        debug(response);
         return Bacon.fromArray(response.changes)
           .filter(c => c.file)
           .flatMap(change => {
@@ -172,7 +172,7 @@ export default class GoogleDriveApi extends StorageApi {
               id: change.fileId,
               parentId: parentId
             }
-          }).fold([], array, element => {
+          }).fold([], (array, element) => {
             array.push(element);
             return array;
           }).flatMap(array => {
@@ -185,8 +185,8 @@ export default class GoogleDriveApi extends StorageApi {
   }
 
   _getStartPageToken() {
-    return this._request(this.drive.changes, 'startPageToken')
-      .flatMap(respone => response.startPageToken);
+    return this._request(this.drive.changes, 'getStartPageToken')
+      .flatMap(response => response.startPageToken);
   }
 
   move(fromPath, toPath) {
@@ -658,9 +658,10 @@ export default class GoogleDriveApi extends StorageApi {
     return this._addPrefix(this._addSuffix(directory, suffix), prefix);
   }
 
-  _request(object, name, options) {
+  _request(object, name, options = {}) {
     let source = Bacon.fromPromise(new Promise((resolve, reject) => {
       try {
+        debug(object, name, options);
         let request = object[name](options, (err, response) => {
           if (err) {
             reject(err, request);
@@ -671,7 +672,7 @@ export default class GoogleDriveApi extends StorageApi {
           reject(err, request);
         });
       } catch (e) {
-        reject(e, request);
+        reject(e);
       }
     }));
 

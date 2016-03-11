@@ -3,7 +3,6 @@ import isNetworkError from './cloud/is-network-error.js';
 import Bacon from 'baconjs';
 import Encryption from './encryption.js';
 import fs from 'fs';
-import Providers from './cloud/providers.js';
 import ChangeRunner from './change-runner.js';
 
 let debug = require('debug')('bean:app');
@@ -16,6 +15,8 @@ export default class SyncManager {
 
   constructor(options = {}) {
     this.providers = options.providers || [];
+    debug(this.providers);
+    this.fetchIntervalTime = options.fetchInterval || 10000;
 
     this.uploadStrategy = options.uploadStrategy || 'first-full'; /// 'distribute'
     this.watchHome = options.watchHome;
@@ -26,6 +27,8 @@ export default class SyncManager {
     } else {
       this.useEncryption = false;
     }
+
+    this._fetchInterval;
 
     this._uploadQueue = new ChangeQueue({
       tablename: 'UPLOAD_QUEUE'
@@ -60,11 +63,13 @@ export default class SyncManager {
     }
     this._uploadRunner.start();
     this._downloadRunner.start();
+    this._startFetchInterval();
   }
 
   stop() {
     this._uploadRunner.stop();
     this._downloadRunner.stop();
+    this._stopFetchInterval();
   }
 
   pushUpload(change) {
@@ -76,9 +81,19 @@ export default class SyncManager {
     return provider.doUpload(change);
   }
 
-  async _nextDownload(change) {
+  async nextDownload(change) {
     debug('downloading: ', change);
     return null;
+  }
+
+  _fetchChanges() {
+    debug(this.providers);
+    Bacon.fromArray(this.providers)
+      .flatMap(provider => provider.pullChanges())
+      .onValue(change => {
+        debug(change);
+        this._downloadQueue.push(change);
+      });
   }
 
   _createReadStream(location) {
@@ -97,6 +112,17 @@ export default class SyncManager {
     } else {
       return stream;
     }
+  }
+
+  _startFetchInterval() {
+    // TODO: check internet connectivity before calling providers
+    this._fetchInterval = setInterval(() => {
+      this._fetchChanges();
+    }, this.fetchIntervalTime);
+  }
+
+  _stopFetchInterval() {
+    clearInterval(this._fetchInterval);
   }
 
   _getProvider() {
