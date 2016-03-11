@@ -28,10 +28,10 @@ export default class GoogleDrive extends StorageProvider {
     super();
     this.auth = options.auth;
     this.retry = options.retry || 10;
-    this.basedir = this._addEnding(options.basedir, '/');
+    this.mountDir = this._addSuffixAndPrefix(options.basedir, '/', '/');
 
-    this.rootDirId = null;
-    this.absoluteRootDirId = null;
+    this._syncRoot = null;
+    this._rootDir = null;
 
     google.options({
       auth: this.auth
@@ -62,8 +62,8 @@ export default class GoogleDrive extends StorageProvider {
     throw new Error('Not yet impl.');
   }
 
-  getRootDir() {
-    return this.basedir;
+  getRootDir() { // todo change
+    return this.mountDir;
   }
 
   download(location, writeStream, properties = {}) {
@@ -201,18 +201,6 @@ export default class GoogleDrive extends StorageProvider {
       .toPromise();
   }
 
-  _isStream(readable) {
-    return readable instanceof stream.Readable;
-  }
-
-  _getMostInnerChild(tree) {
-    if (tree.child) {
-      return this._getMostInnerChild(tree.child);
-    } else {
-      return tree;
-    }
-  }
-
   upload(source, targetPath, properties = {}) {
     let dirname = path.dirname(targetPath);
     let basename = path.basename(targetPath);
@@ -229,7 +217,7 @@ export default class GoogleDrive extends StorageProvider {
               return Bacon.once();
             }
           })
-          .flatMap(() => this._uploadWithParentId(source, basename, parentId))
+          .flatMap(() => this.uploadWithParentId(source, basename, parentId))
           .flatMap(response => {
             let tree = res.properties.tree;
             let child = this._getMostInnerChild(tree);
@@ -249,29 +237,79 @@ export default class GoogleDrive extends StorageProvider {
       .toPromise();
   }
 
+
   createFolder(basedir) {
     basedir = this._qualifyDirectory(basedir);
-    let childdirs = basedir.split('/').filter(a => a.trim() != '');
-    let tree = {};
-    return Bacon.fromPromise(this._getAbsoluteRootDirId())
-      .flatMap(id => {
-        tree.id = id;
-        return Bacon.fromPromise(this._createFoldersRecursively(id, childdirs, 0, tree))
+    let childdirs = this._splitIntoDirs(basedir);
+    let directoryTree = {};
+
+    return Bacon.fromPromise(this._getRootDir())
+      .flatMap(rootDir => {
+        directoryTree = rootDir;
+        return Bacon.fromPromise(this._createFolders(directoryTree, childdirs));
       })
-      .flatMap(result => {
-        return {
-          properties: {
-            id: result.id,
-            tree: tree
-          }
-        };
+      .flatMap((innerFolder) => {
+        // Remove all folders from tree that are outside syncdir.
+        return Bacon.fromArray(this._splitIntoDirs(this.mountDir))
+          .fold(0, (sum, dir) => {
+            return sum + 1;
+          })
+          .flatMap(numberOfDirsOutside => {
+            directoryTree = this._removeFoldersFromTree(directoryTree, numberOfDirsOutside);
+            return {
+              properties: {
+                id: innerFolder.id,
+                name: innerFolder.name,
+                tree: directoryTree
+              }
+            };
+          });
       })
       .doAction(() => debug('Folder %s created', basedir))
       .endOnError()
       .toPromise();
   }
 
-  _uploadWithParentId(source, name, parentId) {
+  createSingleFolder(folderName, parentId = null) {
+    let searchArgs = {};
+
+    return Bacon.once().flatMap(() => {
+        if (parentId) {
+          searchArgs.withParentId = parentId;
+          return searchArgs;
+        } else {
+          return Bacon.fromPromise(this._getSyncRoot())
+            .flatMap(syncRoot => {
+              searchArgs.withParentId = syncRoot.id;
+              return searchArgs;
+            });
+        }
+      })
+      .flatMap(searchArgs => {
+        return Bacon.fromPromise(this.search(folderName, searchArgs))
+          .flatMap(search => {
+            if (search.files.length) {
+              return {
+                id: search.files[0].id,
+                name: folderName
+              };
+            } else {
+              let options = {
+                resource: {
+                  name: folderName,
+                  mimeType: FOLDER_MIME_TYPE,
+                  parents: [searchArgs.withParentId]
+                },
+                fields: 'id, name'
+              }
+              return this._request(this.drive.files, 'create', options);
+            }
+          });
+      })
+      .toPromise();
+  }
+
+  uploadWithParentId(source, name, parentId) {
     return Bacon.once()
       .flatMap(() => {
         if (source instanceof stream.Readable) {
@@ -290,7 +328,7 @@ export default class GoogleDrive extends StorageProvider {
           }
         }
       })
-      .map(body => {
+      .flatMap(body => {
         return {
           resource: {
             name: name,
@@ -313,58 +351,41 @@ export default class GoogleDrive extends StorageProvider {
       });
   }
 
-  _getRootDirId() {
-    if (!this.rootDirId) {
-      return this.createFolder('/')
-        .then(found => {
-          this.rootDirId = found.id;
-          return found.id;
-        });
-    } else {
-      return Bacon.once(this.rootDirId).toPromise();
-    }
-  }
-
   removeById(id) {
     let options = {
       fileId: id,
       fields: 'id'
     };
-
     return this._request(this.drive.files, 'delete', options).toPromise();
   }
 
-  _getAbsoluteRootDirId() {
-    if (!this.absoluteRootDirId) {
-      let options = {
-        fileId: 'root',
-        fields: 'id'
-      }
-      return this._request(this.drive.files, 'get', options)
-        .flatMap(found => found.id)
-        .doAction(id => this.absoluteRootDirId = id)
-        .toPromise();
-    } else {
-      return Bacon.once(this.absoluteRootDirId).toPromise();
-    }
-  }
-
   getPathByFileId(fileId) {
-    let followUp = (fileId) => {
+    let followUp = (fileId, folders = []) => {
       return Bacon.fromPromise(this.getFileMeta(fileId))
-        .flatMap(meta => {
-          if (meta.parents && meta.parents.length) {
-            return followUp(meta.parents[0].id);
-          } else {
-            return meta.name;
-          }
-        })
-        .fold('', (path, name) => {
-          path += '/' + name;
-          return path;
+        .flatMapConcat(meta => {
+          return Bacon.fromPromise(this._getSyncRoot())
+            .flatMap(syncRoot => {
+              if (syncRoot.id == meta.id || (!meta.parents || !meta.parents.length)) {
+                return folders;
+              } else {
+                folders.push(meta.name);
+                return followUp(meta.parents[0], folders);
+              }
+            });
         });
     };
-    return followUp(fileId).toPromise();
+    return followUp(fileId)
+      .flatMap(folders => Bacon.fromArray(folders.reverse()))
+      .fold('', (path, folder) => {
+        path += '/' + folder;
+        return path;
+      })
+      .flatMap(path => {
+        if (path == '') {
+          return '/';
+        }
+      })
+      .toPromise();
   }
 
   getFileMetaByPath(directory) {
@@ -375,10 +396,11 @@ export default class GoogleDrive extends StorageProvider {
       .flatMap(() => {
         debug(tree);
         if (!tree || !tree.length || tree.length == 1) {
-          return Bacon.fromPromise(this._getAbsoluteRootDirId())
-            .flatMap(found => {
+          return Bacon.fromPromise(this._getRootDir())
+            .flatMap(rootDir => {
               return {
-                id: found
+                id: rootDir.id,
+                name: rootDir.name
               };
             });
         } else {
@@ -441,60 +463,6 @@ export default class GoogleDrive extends StorageProvider {
     return this._request(this.drive.files, 'list', options).toPromise();
   }
 
-  changes() {}
-
-  createSingleFolder(folderName, parentId = null) {
-    let searchArgs = {};
-
-    return Bacon.once().flatMap(() => {
-        if (parentId) {
-          searchArgs.withParentId = parentId;
-          return searchArgs;
-        } else {
-          return Bacon.fromPromise(this._getRootDirId())
-            .flatMap(id => {
-              searchArgs.withParentId = id;
-              return searchArgs;
-            });
-        }
-      })
-      .flatMap(searchArgs => {
-        return Bacon.fromPromise(this.search(folderName, searchArgs))
-          .flatMap(search => {
-            if (search.files.length) {
-              return {
-                id: search.files[0].id,
-                name: folderName
-              };
-            } else {
-              let options = {
-                resource: {
-                  name: folderName,
-                  mimeType: FOLDER_MIME_TYPE,
-                  parents: [searchArgs.withParentId]
-                },
-                fields: 'id, name'
-              }
-              return this._request(this.drive.files, 'create', options);
-            }
-          });
-      })
-      .toPromise();
-  }
-
-  _createFoldersRecursively(parentId, directories, directoryIndex = 0, tree = {}) {
-    return Promise.resolve(this.createSingleFolder(directories[directoryIndex], parentId))
-      .then(folder => {
-        tree.child = folder;
-        directoryIndex++;
-        if (directoryIndex < directories.length) {
-          return this._createFoldersRecursively(folder.id, directories, directoryIndex, tree.child);
-        } else {
-          return folder;
-        }
-      });
-  }
-
   _findMatchingParent(files, parentDirectories) {
     return Bacon
       .sequentially(BACON_SEQUENTIAL_WAIT, files)
@@ -527,6 +495,18 @@ export default class GoogleDrive extends StorageProvider {
       .firstToPromise();
   }
 
+  _isStream(readable) {
+    return readable instanceof stream.Readable;
+  }
+
+  _getMostInnerChild(tree) {
+    if (tree.child) {
+      return this._getMostInnerChild(tree.child);
+    } else {
+      return tree;
+    }
+  }
+
   _followParents(parentId, directories = [], index = 0, tree = {}) {
     return this.getFileMeta(parentId)
       .then(file => {
@@ -554,22 +534,90 @@ export default class GoogleDrive extends StorageProvider {
       });
   }
 
+  _removeFoldersFromTree(tree, number = 0) {
+    let current = 0;
+    let remove = (tree, number) => {
+      if (current < number && tree.child) {
+        current++;
+        return remove(tree.child);
+      } else {
+        return tree;
+      }
+    };
+    return remove(tree, number);
+  }
+
+  _createFolders(directoryTree, dirsToCreate, index = 0) {
+    return Promise.resolve(this.createSingleFolder(dirsToCreate[index], directoryTree.id))
+      .then(folder => {
+        directoryTree.child = folder;
+        index++;
+        if (index < dirsToCreate.length) {
+          return this._createFolders(directoryTree.child, dirsToCreate, index);
+        } else {
+          return folder;
+        }
+      });
+  };
+
+  _getRootDir() {
+    if (!this._rootDir) {
+      let options = {
+        fileId: 'root',
+        fields: 'id, name'
+      }
+      return this._request(this.drive.files, 'get', options)
+        .doAction(rootDir => {
+          this._rootDir = {
+            id: rootDir.id,
+            name: rootDir.name
+          };
+        })
+        .toPromise();
+    } else {
+      return Bacon.once(this._rootDir).toPromise();
+    }
+  }
+
+  _getSyncRoot() {
+    if (!this._syncRoot) {
+      return this.createFolder('/')
+        .then(found => {
+          this._syncRoot = {
+            id: found.properties.id,
+            name: found.properties.name
+          };
+          return this._syncRoot;
+        });
+    } else {
+      return Bacon.once(this._syncRoot).toPromise();
+    }
+  }
+
   _splitIntoDirs(path) {
-    return path.split('/').filter(a => a.trim() != '');
+    return path.split('/').filter(a => a && a.trim() != '');
   }
 
   _qualifyDirectory(directory) {
     if (directory.startsWith('/') && directory.length > 1) {
-      return this.basedir.concat(directory.substr(1));
+      return this.mountDir.concat(directory.substr(1));
     } else if (directory.length == 1) {
-      return this.basedir;
+      return this.mountDir;
     } else {
-      return this.basedir.concat(directory);
+      return this.mountDir.concat(directory);
     }
   }
 
-  _addEnding(directory, ending) {
+  _addPrefix(directory, ending) {
     return directory.endsWith(ending) ? directory : directory + ending;
+  }
+
+  _addSuffix(directory, suffix) {
+    return directory.startsWith(suffix) ? directory : suffix + directory;
+  }
+
+  _addSuffixAndPrefix(directory, suffix, prefix) {
+    return this._addPrefix(this._addSuffix(directory, suffix), prefix);
   }
 
   _request(object, name, options) {
