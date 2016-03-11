@@ -63,14 +63,14 @@ export default class GoogleDriveApi extends StorageApi {
     let options = {
       fields: 'storageQuota'
     }
-      return this._request(this.drive.about, 'get', options)
-        .flatMap(response => {
-          return {
-            total: response.storageQuota.limit,
-            used: response.storageQuota.usage,
-          }
-        })
-        .toPromise();
+    return this._request(this.drive.about, 'get', options)
+      .flatMap(response => {
+        return {
+          total: response.storageQuota.limit,
+          used: response.storageQuota.usage,
+        }
+      })
+      .toPromise();
   }
 
   getUserId() {
@@ -169,10 +169,8 @@ export default class GoogleDriveApi extends StorageApi {
             }
             return {
               action: action,
-              properties: {
-                id: change.fileId,
-                parentId: parentId
-              }
+              id: change.fileId,
+              parentId: parentId
             }
           }).fold([], array, element => {
             array.push(element);

@@ -52,11 +52,26 @@ export default class GoogleDrive {
   }
 
   pullChanges() {
-    
+    let lastPageToken = null;
+    return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
+      .flatMap(changes => {
+        return Bacon.fromArray(changes.changes)
+          .flatMap(change => {
+            debug(change);
+          });
+      });
   }
 
   doDownload(file) {
 
+  }
+
+  _detectChange(change) {
+    // possible changes:
+    // 1. add: id is not found in index
+    // 2. move: parent id does not match parentId in index
+    // 3. rename: name changed
+    // 4. remove: detetected by API
   }
 
 }
