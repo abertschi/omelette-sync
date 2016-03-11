@@ -18,6 +18,7 @@ if (noSchema) {
     db.run("CREATE TABLE DIRECTORY_INDEX (path TEXT, is_dir INT, file_id TEXT, cloud_id TEXT, payload JSON)");
     db.run("CREATE TABLE UPLOAD_QUEUE (action TEXT, path TEXT, json JSON, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, active INT DEFAULT 0)");
     db.run("CREATE TABLE DOWNLOAD_QUEUE (action TEXT, path TEXT, json JSON, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, active INT DEFAULT 0)");
+    db.run("CREATE TABLE SETTINGS (key TEXT, value TEXT)");
   });
 }
 
