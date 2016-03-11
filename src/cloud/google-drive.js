@@ -57,22 +57,25 @@ export default class GoogleDrive {
     return promise;
   }
 
-  async pullChanges() {
-    let lastPageTokenKey = await this._getDriveId();
-    let lastPageToken = await Settings.get(lastPageTokenKey);
-    debug(lastPageTokenKey, lastPageToken);
-    return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
-      .flatMap(changes => {
-        Settings.set(lastPageTokenKey, changes.startPageToken);
-        return Bacon.fromArray(changes.changes)
-          .flatMap(change => {
-            debug(change);
-            return {
-              action: 'UNKNOWN',
-              id: 'unknown'
-            };
-          });
-      });
+  pullChanges() {
+    return Bacon.fromPromise(this._getDriveId())
+      .flatMap(lastPageTokenKey => {
+        return Bacon.fromPromise(Settings.get(lastPageTokenKey))
+          .flatMap(lastPageToken => {
+            return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
+              .flatMap(pull => {
+                Settings.set(lastPageTokenKey, pull.startPageToken);
+                return Bacon.fromArray(pull.changes)
+                  .flatMap(change => {
+                    debug(change);
+                    return {
+                      action: 'UNKNOWN',
+                      id: 'unknown'
+                    };
+                  });
+              })
+          })
+      })
   }
 
   async _getDriveId() {

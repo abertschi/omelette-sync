@@ -149,7 +149,7 @@ export default class ChangeQueue extends EventEmitter {
 
     return this._hasKey(action, path)
       .flatMap(found => found ? this._delete(action, path) : null)
-      .flatMap(() => Bacon.fromNodeCallback(db, `get`, QUERY, action, path, JSON.stringify(payload)))
+      .flatMap(() => Bacon.fromNodeCallback(db, `get`, QUERY, [action, path, JSON.stringify(payload)]))
       .map(() => true);
   }
 

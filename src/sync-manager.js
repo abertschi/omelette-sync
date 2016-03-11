@@ -91,8 +91,8 @@ export default class SyncManager {
     Bacon.fromArray(this.providers)
       .flatMap(provider => provider.pullChanges())
       .onValue(change => {
-        debug(change);
-        this._downloadQueue.push(change);
+        debug('BEAN1', change);
+        //this._downloadQueue.push(change);
       });
   }
 

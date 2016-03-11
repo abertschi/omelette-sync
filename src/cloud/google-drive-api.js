@@ -181,7 +181,9 @@ export default class GoogleDriveApi extends StorageApi {
               changes: array
             };
           });
-      }).toPromise();
+      })
+      .doAction(d => debug('handing out:', d))
+      .toPromise();
   }
 
   _getStartPageToken() {
