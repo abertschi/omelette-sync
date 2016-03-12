@@ -124,35 +124,25 @@ export default class GoogleDriveApi extends StorageApi {
       .toPromise();
   }
 
-  listChanges(key, properties = {
-    startPageToken: null
-  }) {
-    let pageToken = key || properties.startPageToken || null;
-    return Bacon.once()
-      .flatMap(() => {
-        if (!pageToken) {
-          return this._getStartPageToken();
-        } else {
-          return pageToken;
-        }
-      })
+  listChanges(pageToken) {
+    return Bacon.once(pageToken)
+      .flatMap(() => pageToken ? pageToken : this._getStartPageToken())
       .flatMap(token => {
         let options = {
           pageToken: token,
           includeRemoved: true,
-          fields: 'changes, newStartPageToken, nextPageToken'
+          fields: 'changes, newStartPageToken, nextPageToken' // todo exclude more fields
         }
         return this._request(this.drive.changes, 'list', options);
       })
       .flatMap(response => {
         if (response.nextPageToken) {
-          return Bacon.fromPromise(this.listChanges(response.nextPageToken));
+          return Bacon.fromPromise(this.listChanges(response.nextPageToken)); // TODO: reimplement recursion, not working this way
         } else {
           return Bacon.fromArray([new Bacon.Next(response), new Bacon.End()]);
         }
       })
       .flatMap(response => {
-        debug(response);
         return Bacon.fromArray(response.changes)
           .filter(c => c.file)
           .flatMap(change => {
@@ -169,8 +159,10 @@ export default class GoogleDriveApi extends StorageApi {
             }
             return {
               action: action,
+              name: change.file.name,
               id: change.fileId,
-              parentId: parentId
+              parentId: parentId,
+              md5Checksum: change.file.md5Checksum
             }
           }).fold([], (array, element) => {
             array.push(element);
@@ -182,7 +174,6 @@ export default class GoogleDriveApi extends StorageApi {
             };
           });
       })
-      .doAction(d => debug('handing out:', d))
       .toPromise();
   }
 
@@ -663,7 +654,6 @@ export default class GoogleDriveApi extends StorageApi {
   _request(object, name, options = {}) {
     let source = Bacon.fromPromise(new Promise((resolve, reject) => {
       try {
-        debug(object, name, options);
         let request = object[name](options, (err, response) => {
           if (err) {
             reject(err, request);

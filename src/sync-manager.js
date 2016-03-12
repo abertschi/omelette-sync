@@ -15,7 +15,6 @@ export default class SyncManager {
 
   constructor(options = {}) {
     this.providers = options.providers || [];
-    debug(this.providers);
     this.fetchIntervalTime = options.fetchInterval || 10000;
 
     this.uploadStrategy = options.uploadStrategy || 'first-full'; /// 'distribute'
@@ -82,17 +81,15 @@ export default class SyncManager {
   }
 
   async nextDownload(change) {
-    debug('downloading: ', change);
     return null;
   }
 
   _fetchChanges() {
-    debug(this.providers);
     Bacon.fromArray(this.providers)
       .flatMap(provider => provider.pullChanges())
       .onValue(change => {
-        debug('BEAN1', change);
-        //this._downloadQueue.push(change);
+        debug(change);
+        this._downloadQueue.push(change);
       });
   }
 
