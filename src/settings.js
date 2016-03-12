@@ -16,8 +16,7 @@ class Settings {
     return Bacon.fromPromise(this.get(key))
       .flatMap(existing => {
         if (existing) {
-          return Bacon.fromNodeCallback(db, 'get', UPDATE, [value])
-            .flatMap(row => row.value);
+          return Bacon.fromNodeCallback(db, 'get', UPDATE, [value, key])
         } else {
           return Bacon.fromNodeCallback(db, 'get', INSERT, [key, value]);
         }
