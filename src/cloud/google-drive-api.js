@@ -131,7 +131,7 @@ export default class GoogleDriveApi extends StorageApi {
         let options = {
           pageToken: token,
           includeRemoved: true,
-          fields: 'changes, newStartPageToken, nextPageToken' // todo exclude more fields
+          fields: 'changes(fileId, file), newStartPageToken, nextPageToken' // todo exclude more fields
         }
         return this._request(this.drive.changes, 'list', options);
       })
@@ -331,7 +331,7 @@ export default class GoogleDriveApi extends StorageApi {
   uploadWithParentId(source, name, parentId) {
     return Bacon.once()
       .flatMap(() => {
-        if (this._isStream(source)) {
+        if (source instanceof stream.Readable) {
           return source;
         } else {
           try {
@@ -361,13 +361,13 @@ export default class GoogleDriveApi extends StorageApi {
       .flatMap(upload => {
         return Bacon.fromBinder(sink => {
           // if an upload fails, do not retry to upload because input stream must be reset first
-          this.drive.files.create(upload, (err, response => {
+          this.drive.files.create(upload, (err, response) => {
               if (err) {
                 sink(new Bacon.Error(err));
               } else {
                 sink([new Bacon.Next(response), new Bacon.End()]);
               }
-            }))
+            })
             .on('error', (err) => {
               sink(new Bacon.Error(err));
             });
@@ -399,7 +399,7 @@ export default class GoogleDriveApi extends StorageApi {
                 return folders;
               } else {
                 folders.push(meta.name);
-                return followUp(meta.parents[0], folders);
+                return followUp(meta.parents[0], folders).delay(1000);
               }
             });
         });
@@ -411,8 +411,11 @@ export default class GoogleDriveApi extends StorageApi {
         return path;
       })
       .flatMap(path => {
+        debug(path);
         if (path == '') {
           return '/';
+        } else {
+          return path;
         }
       })
       .toPromise();

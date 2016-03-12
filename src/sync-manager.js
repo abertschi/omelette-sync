@@ -77,18 +77,19 @@ export default class SyncManager {
 
   async nextUpload(change) {
     let provider = this._getProvider();
-    return provider.doUpload(change);
+    let stream = this._createReadStream(change.path);
+    return provider.doUpload(change, stream);
   }
 
   async nextDownload(change) {
-    return null;
+    return Bacon.once(change).toPromise();
   }
 
   _fetchChanges() {
     Bacon.fromArray(this.providers)
       .flatMap(provider => provider.pullChanges())
       .onValue(change => {
-        debug(change);
+        //debug(change);
         this._downloadQueue.push(change);
       });
   }

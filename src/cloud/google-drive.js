@@ -67,83 +67,103 @@ export default class GoogleDrive {
           .flatMap(lastPageToken => {
             return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
               .flatMap(pull => {
-                //Settings.set(lastPageTokenKey, pull.startPageToken);
-                return Bacon.fromArray(pull.changes)
+                return Bacon.sequentially(500, pull.changes)
                   .flatMap(change => {
-                    if (change.action != 'REMOVE') {
-                      return this._detectChange(change)
-                        .flatMap(change => {
-                          return this._addOrUpdate(change)
+                    return this._detectDownloadChange(change)
+                      .flatMap(change => {
+                        if (change.action != 'REMOVE') {
+                          return this._addOrUpdateDownload(change)
                             .flatMap(() => change);
-                        })
-                    } else {
-                      return this._prepareRemove(change);
-                    }
-                  })
+                        } else {
+                          return this._removeDownload(change)
+                            .flatMap(() => change);
+                        }
+                      });
+                  });
               })
-          })
-      })
+              .flatMap(change => {
+                if (change.action == 'MOVE' || change.action == 'ADD') {
+                  return Bacon.fromPromise(this.drive.getPathByFileId(change.id))
+                    .flatMap(path => {
+                      change.path = path;
+                      return change;
+                    });
+                } else {
+                  return change;
+                }
+              }).flatMap(change => {
+                if (!change.path) {
+                  change.path = change.id;
+                }
+                return change;
+              })
+          });
+      }).log();
   }
 
-  _remove(change) {
+  _removeDownload(change) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.remove(providerId, change.id);
       });
   }
 
-  _addOrUpdate(change) {
+  _addOrUpdateDownload(change) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.addOrUpdate(providerId, change.id, change.payload);
       });
   }
 
-  _prepareRemove(change) {
+  // _prepareRemove(change) {
+  //   return Bacon.fromPromise(this.drive.getUserId())
+  //     .flatMap(providerId => {
+  //       return this.cloudIndex.get(providerId, change.id)
+  //         .flatMap(index => {
+  //           return this.cloudIndex.get(providerId, index.parentId)
+  //             .flatMap(parentIndex => {
+  //               return Bacon.fromPromise(this.drive.getPathByFileId())
+  //             })
+  //         });
+  //     });
+  // }
+
+  _detectDownloadChange(change) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.get(providerId, change.id)
           .flatMap(index => {
-            return this.cloudIndex.get(providerId, index.parentId)
-              .flatMap(parentIndex => {
-                return Bacon.fromPromise(this.drive.getPathByFileId())
-              })
+            change.payload = {};
+            if (!index) {
+              change.action = 'ADD';
+              change.payload = {
+                id: change.id,
+                name: change.name,
+                parentId: change.parentId,
+                md5Checksum: change.md5Checksum
+              };
+            } else {
+              if (change.action = 'REMOVE') {
+                change.payload = index;
+              } else {
+                if (index.parentId != change.parentId) {
+                  change.payload.parentId = change.parentId;
+                  change.payload.parentIdOrigin = index.parentId;
+                }
+                if (index.name != change.name) {
+                  change.payload.name = change.name;
+                }
+                if (index.md5Checksum != change.md5Checksum) {
+                  change.action = 'CHANGE';
+                  change.payload.md5Checksum = change.md5Checksum;
+                } else {
+                  change.action = 'MOVE';
+                }
+              }
+            }
+            return change;
           });
       });
-  }
-
-  _detectChange(change) {
-    return Bacon.fromPromise(this.drive.getUserId())
-      .flatMap(providerId => {
-          return this.cloudIndex.get(providerId, change.id)
-            .flatMap(index => {
-                change.payload = {};
-                if (!index) {
-                  change.action = 'ADD';
-                  change.payload = {
-                    id: change.id,
-                    name: change.name,
-                    parentId: change.parentId,
-                    md5Checksum: change.md5Checksum
-                  };
-                } else {
-                  if (index.parentId != change.parentId) {
-                    change.payload.parentId = change.parentId;
-                    change.payload.parentIdOrigin = index.parentId;
-                  }
-                  if (index.name != change.name) {
-                    change.payload.name = change.name;
-                  }
-                  if (index.md5Checksum != change.md5Checksum) {
-                    change.action = 'CHANGE';
-                    change.payload.md5Checksum = change.md5Checksum;
-                  } else {
-                    change.action = 'MOVE';
-                  }
-                  return change;
-                });
-            });
-      }
   }
 
   async _getPageTokenKey() {

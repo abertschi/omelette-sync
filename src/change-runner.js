@@ -41,7 +41,6 @@ export default class ChangeRunner {
   }
 
   async _run() {
-    debug('next iteration');
     if (this._running && this._changesActive < this.concurrencyLimit) {
       this._changesActive++;
       let change;
@@ -51,8 +50,6 @@ export default class ChangeRunner {
       } else {
         change = await this.queue.peek();
       }
-
-      debug('got change: ', change);
 
       if (change) {
         let promise = this.callback.apply(this.callbackObject, [change]);
@@ -70,7 +67,6 @@ export default class ChangeRunner {
   _markAsDoneIfNoError(promise, change) {
     promise
       .then(then => {
-        debug(JSON.stringify(then));
 
         this.queue.flagAsDone(change);
         this._changesActive--;

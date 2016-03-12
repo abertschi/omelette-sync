@@ -169,7 +169,6 @@ export default class ChangeQueue extends EventEmitter {
   _emitQueueStatus() {
     return this.getSize()
       .then(size => {
-        debug(size);
         let emit = size == 0 ? `empty` : `not-empty`;
         this.emit(emit);
       });
