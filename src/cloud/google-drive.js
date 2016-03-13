@@ -120,8 +120,9 @@ export default class GoogleDrive {
           .flatMap(lastPageToken => {
             return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
               .flatMap(pull => {
+                debug(pull);
                 pageToken = pull.startPageToken;
-                return Bacon.sequentially(1000, pull.changes)
+                return Bacon.sequentially(500, pull.changes)
                   .flatMap(change => {
                     return this._detectDownloadChange(change)
                       .flatMap(file => {
@@ -167,8 +168,9 @@ export default class GoogleDrive {
       .flatMap(providerId => {
         return this.cloudIndex.get(providerId, file.id)
           .flatMap(index => {
+            debug(file);
             if (!index) { // add
-              return this.drive.getPathByFileId(file.id)
+              return Bacon.fromPromise(this.drive.getPathByFileId(file.id))
                 .flatMap(path => {
                   file.action = 'ADD';
                   file.path = path;
@@ -179,12 +181,12 @@ export default class GoogleDrive {
                 .flatMap(nodes => {
                   let pathOrigin = this._nodesToPath(nodes);
 
-                  if (file.action = 'REMOVE') { // remove
+                  if (file.action == 'REMOVE') { // remove
                     file.path = pathOrigin;
                     return file;
 
                   } else if (index.parentId != file.parentId) { // move
-                    return this.drive.getPathByFileId(file.id)
+                    return Bacon.fromPromise(this.drive.getPathByFileId(file.id))
                       .flatMap(path => {
                         file.action = 'MOVE';
                         file.pathOrigin = pathOrigin;
@@ -195,39 +197,48 @@ export default class GoogleDrive {
                   } else if (index.name != file.name) { // rename
                     file.action = 'MOVE';
                     file.pathOrigin = pathOrigin;
-                    file.path = nodes.slice(nodes.length - 1) + '/' + file.name;
+                    file.path = nodes.slice(0, nodes.length - 1) + '/' + file.name;
                     return file;
 
-                  } else { // change
+                  } else if (!this._isDir(file.mimeType)) { // change
                     file.action = 'CHANGE';
                     file.path = pathOrigin;
+                    return file;
+                  } else {
+                    // apparently a parent directory marked as well if a child is changed.
+                    // ignore parent directory
                   }
-                });
+                }).filter(set => set);
             }
-          });
+          })
       });
   }
 
   _composeNodesWithIndex(providerId, fileId) {
-    let walkToRoot = (fileId) => {
-      return this.cloudIndex.get(providerId, fileId, parents = [])
+    let walkToRoot = (fileId, parents = []) => {
+      return this.cloudIndex.get(providerId, fileId)
         .flatMap(index => {
           if (index && index.name) {
             parents.push(index.name);
             return walkToRoot(index.parentId, parents);
           } else {
+            parents.reverse();
+            debug(parents);
             return parents;
           }
         });
     }
-    return walkToRoot(fileId).toPromise();
+    return walkToRoot(fileId);
   }
 
-  _nodesToPath(nodes) {
+  _nodesToPath(nodes = []) {
     let path = '';
     nodes.forEach(d => {
       path += '/' + d;
     });
+    if (path == '') {
+      path = '/';
+    }
     return path;
   }
 

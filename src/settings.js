@@ -8,14 +8,14 @@ class Settings {
     const SQL = 'SELECT value from SETTINGS where key=?';
     return Bacon.fromNodeCallback(db, 'get', SQL, [key])
       .flatMap(row => row && row.value ? row.value : null)
-      //.doAction(value => debug('Get %s=%s', key, value))
+      .doAction(value => debug('Get %s=%s', key, value))
       .toPromise();
   }
 
   set(key, value) {
     const INSERT = 'INSERT into SETTINGS (key, value) VALUES(?, ?)';
     const UPDATE = 'UPDATE SETTINGS set value=? where key=?';
-    //debug('Set %s=%s', key, value);
+    debug('Set %s=%s', key, value);
     return Bacon.fromPromise(this.get(key))
       .flatMap(existing => {
         if (existing) {
