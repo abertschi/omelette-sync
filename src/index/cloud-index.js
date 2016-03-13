@@ -13,12 +13,13 @@ export default class CloudIndex {
 
     return this.get(provider, key)
       .flatMap(row => {
-        debug(row)
         if (row) {
-          let load = row.payload ? this._mergeObjects(this._parseJson(row.payload), payload) : payload;
+          let load = row.payload ? this._mergeObjects(this._parseJson(row.payload.payload), payload) : payload;
           let json = JSON.stringify(load);
+          //debug('Updating payload from %s to %s: ', JSON.stringify(row.payload), json);
           return Bacon.fromNodeCallback(db, 'get', UPDATE, json, key, provider);
         } else {
+          //debug('Inserting payload %s: ', JSON.stringify(payload));
           let json = JSON.stringify(payload);
           return Bacon.fromNodeCallback(db, 'get', INSERT, provider, key, json);
         }
@@ -38,8 +39,12 @@ export default class CloudIndex {
     const SELECT = 'SELECT payload from CLOUD_INDEX where provider=? and key=?';
     return Bacon.fromNodeCallback(db, 'get', SELECT, provider, key)
       .flatMap(row => {
-        return row ? row : null;
+        return row && row.payload ? this._parseJson(row.payload) : null;
       });
+  }
+
+  _makeAccessable(object) {
+    return this._parseJson(JSON.stringify(object));
   }
 
   _parseJson(json) {
