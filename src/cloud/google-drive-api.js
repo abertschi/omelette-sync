@@ -7,7 +7,7 @@ import StorageApi from './storage-api.js';
 var agent = require('superagent-promise')(require('superagent'));
 var stream = require('stream');
 const mixin = require('es6-class-mixin');
-let debug = require('debug')('bean:app:1');
+let debug = require('debug')('bean:app');
 var google = require('googleapis');
 var path = require('path');
 var Promise = require('bluebird');
@@ -131,7 +131,7 @@ export default class GoogleDriveApi extends StorageApi {
         let options = {
           pageToken: token,
           includeRemoved: true,
-          fields: 'changes(fileId, file), newStartPageToken, nextPageToken' // todo exclude more fields
+          fields: 'changes, newStartPageToken, nextPageToken' // todo exclude more fields
         }
         return this._request(this.drive.changes, 'list', options);
       })
@@ -144,11 +144,13 @@ export default class GoogleDriveApi extends StorageApi {
       })
       .flatMap(response => {
         return Bacon.fromArray(response.changes)
-          .filter(c => c.file)
+          .filter(f => f.fileId)
           .flatMap(change => {
+            let file = change.file;
             let action;
             let parentId;
-            if (change.removed || change.file.trashed || change.file.explicitlyTrashed) {
+
+            if (change.removed || file && (file.trashed || file.explicitlyTrashed)) {
               action = 'REMOVE';
             } else {
               action = 'UNKNOWN'
@@ -159,10 +161,11 @@ export default class GoogleDriveApi extends StorageApi {
             }
             return {
               action: action,
-              name: change.file.name,
               id: change.fileId,
+              name: file ? file.name : null,
               parentId: parentId,
-              md5Checksum: change.file.md5Checksum
+              md5Checksum: file ? file.md5Checksum : null,
+              mimeType: file ? file.mimeType : null
             }
           }).fold([], (array, element) => {
             array.push(element);
@@ -189,7 +192,6 @@ export default class GoogleDriveApi extends StorageApi {
     let toMetaStream = Bacon.fromPromise(this.createFolder(basedir));
 
     return Bacon.zipWith(fromMetaStream, toMetaStream, (fromMeta, toMeta) => {
-        debug(fromMeta, toMeta);
         return {
           source: fromMeta,
           target: toMeta
@@ -207,14 +209,15 @@ export default class GoogleDriveApi extends StorageApi {
               }
             }
             return this._request(this.drive.files, 'update', options)
-          })
-          .flatMap(result => {
-            return {
-              properties: {
-                idOrigin: meta.source.id,
-                id: meta.target,
-              }
-            };
+              .flatMap(result => {
+                return {
+                  properties: {
+                    id: meta.source.id,
+                    parentIdOrigin: sourceDetails.parents,
+                    parentId: meta.target.properties.id
+                  }
+                };
+              })
           })
       })
       .endOnError()
@@ -247,6 +250,7 @@ export default class GoogleDriveApi extends StorageApi {
             return {
               properties: {
                 id: response.id,
+                name: basename,
                 tree: tree
               }
             };
@@ -411,7 +415,6 @@ export default class GoogleDriveApi extends StorageApi {
         return path;
       })
       .flatMap(path => {
-        debug(path);
         if (path == '') {
           return '/';
         } else {
@@ -427,7 +430,6 @@ export default class GoogleDriveApi extends StorageApi {
 
     return Bacon.once()
       .flatMap(() => {
-        debug(tree);
         if (!tree || !tree.length || tree.length == 1) {
           return Bacon.fromPromise(this._getRootDir())
             .flatMap(rootDir => {
@@ -466,7 +468,6 @@ export default class GoogleDriveApi extends StorageApi {
             });
         }
       })
-      .doAction(f => debug(JSON.stringify(f)))
       .toPromise();
   }
 
@@ -601,11 +602,12 @@ export default class GoogleDriveApi extends StorageApi {
         fields: 'id, name'
       }
       return this._request(this.drive.files, 'get', options)
-        .doAction(rootDir => {
+        .flatMap(rootDir => {
           this._rootDir = {
             id: rootDir.id,
             name: rootDir.name
           };
+          return this._rootDir;
         })
         .toPromise();
     } else {
@@ -655,6 +657,7 @@ export default class GoogleDriveApi extends StorageApi {
   }
 
   _request(object, name, options = {}) {
+    //debug('Requesting: %s with %s', name, JSON.stringify(options));
     let source = Bacon.fromPromise(new Promise((resolve, reject) => {
       try {
         let request = object[name](options, (err, response) => {
@@ -667,6 +670,7 @@ export default class GoogleDriveApi extends StorageApi {
           reject(err, request);
         });
       } catch (e) {
+        debug(e);
         reject(e);
       }
     }));
