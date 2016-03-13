@@ -166,7 +166,8 @@ export default class GoogleDrive {
   }
 
   // TODO: bug:   bean:app Moving /omelettes/bean/hi/Kopie von Untitled 2.pgn to /1.pgn +0ms
-
+  // TODO: bug: Moving '/bb533dodddddddddsaSdddddsdddd' to '/bb533dodddddddddsaSdddddsdddd' +0ms
+  
   _detectDownloadChange(file) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
