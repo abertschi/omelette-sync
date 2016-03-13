@@ -1,8 +1,7 @@
 import db from './db.js';
 var Promise = require('bluebird');
 import Bacon from 'baconjs';
-
-let debug = require('debug')('bean:app');
+let log = require('./debug.js')('queue');
 
 //const db = Promise.promisifyAll(_db);
 
@@ -39,7 +38,7 @@ export default class ChangeQueue extends EventEmitter {
           return change;
         }
       })
-      .doAction(() => debug('adding change %s %s to queue', change.action, change.path))
+      .doAction(() => log.trace('Adding change %s %s to queue', change.action, change.path))
       .flatMap(() => this._add(change.action, change.path, change))
       .onValue(() => this._emitQueueStatus());
   }

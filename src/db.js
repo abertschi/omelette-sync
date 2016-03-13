@@ -1,19 +1,21 @@
 var sqlite3 = require('sqlite3');
-
-let debug = require('debug')('bean:app');
+let log = require('./debug.js')('db');
 var fs = require('fs');
 
 let noSchema = false;
+const DB_PATH = './mydb.db';
 
 try {
-  fs.readFileSync('./mydb.db');
+  fs.readFileSync(DB_PATH);
 } catch (e) {
   noSchema = true;
 }
 
-var db = new sqlite3.Database('./mydb.db');
+var db = new sqlite3.Database(DB_PATH);
 
 if (noSchema) {
+  log.debug('Creating database schema at %s', DB_PATH);
+
   db.serialize(function() {
     db.run("CREATE TABLE DIRECTORY_INDEX (path TEXT, is_dir INT, file_id TEXT, payload JSON)");
     db.run("CREATE TABLE CLIENT_INDEX (key TEXT, path TEXT, payload JSON)");
@@ -25,7 +27,7 @@ if (noSchema) {
 }
 
 db.on('trace', (f) => {
-  debug(f)
+  log.trace(f);
 });
 
 export default db;

@@ -4,6 +4,7 @@ import fs from 'fs';
 import Settings from './../settings.js';
 import Bacon from 'baconjs';
 import CloudIndex from '../index/cloud-index.js';
+let log = require('../debug.js')('gdrive');
 
 const LAST_PAGE_TOKEN_PREFIX = 'last_page_token_';
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
@@ -56,7 +57,7 @@ export default class GoogleDrive {
           .toPromise();
         break;
       default:
-        debug('Unknown change type', file);
+        log.debug('Unknown change type', file);
     }
     return promise;
   }
@@ -115,18 +116,17 @@ export default class GoogleDrive {
 
     return Bacon.fromPromise(this._getPageTokenKey())
       .flatMap(lastPageTokenKey => {
-        debug(lastPageTokenKey);
         pageTokenKey = lastPageTokenKey;
         return Bacon.fromPromise(Settings.get(lastPageTokenKey))
           .flatMap(lastPageToken => {
             return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
               .flatMap(pull => {
-                debug(pull);
                 pageToken = pull.startPageToken;
                 return Bacon.sequentially(500, pull.changes)
                   .flatMap(change => {
                     return this._detectDownloadChange(change)
                       .flatMap(file => {
+                        log.trace('Change detected: %s', file);
                         file.isDir = this._isDir(change.mimeType), // required by sync manager
 
                         file.payload = {
@@ -163,7 +163,7 @@ export default class GoogleDrive {
   }
 
   doDownload(file, stream) {
-    debug('Downloading %s / %s', file.action, file.payload.id);
+    log.debug('Downloading %s / %s', file.action, file.payload.id);
   }
 
   // TODO: bug:   bean:app Moving /omelettes/bean/hi/Kopie von Untitled 2.pgn to /1.pgn +0ms
@@ -173,7 +173,7 @@ export default class GoogleDrive {
       .flatMap(providerId => {
         return this.cloudIndex.get(providerId, file.id)
           .flatMap(index => {
-            debug(file);
+            log.info('_detectDownloadChange for %s with index %s', JSON.stringify(file, null, 2), JSON.stringify(index, null, 2));
             if (!index) { // add
               return Bacon.fromPromise(this.drive.getPathByFileId(file.id))
                 .flatMap(path => {
@@ -210,9 +210,10 @@ export default class GoogleDrive {
                     file.path = pathOrigin;
                     return file;
                   } else {
-                    // apparently a parent directory is listed as changed as well
-                    // if a child changes
-                    // ignore it
+                    log.debug('Ignoring change %s', file);
+                    // change is not relevant because
+                    // - change was uploaded from this client
+                    // - a parent directory is listed as changed if a child changes
                   }
                 }).filter(set => set);
             }
@@ -229,7 +230,6 @@ export default class GoogleDrive {
             return walkToRoot(index.parentId, parents);
           } else {
             parents.reverse();
-            debug(parents);
             return parents;
           }
         });
