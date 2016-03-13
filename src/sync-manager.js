@@ -28,6 +28,7 @@ export default class SyncManager {
     }
 
     this._fetchInterval;
+    this._providerMap = new Map();
 
     this._uploadQueue = new ChangeQueue({
       tablename: 'UPLOAD_QUEUE'
@@ -77,20 +78,53 @@ export default class SyncManager {
 
   async nextUpload(change) {
     let provider = this._getProvider();
-    let stream = this._createReadStream(change.path);
+    let stream = null;
+    if (!change.isDir) {
+      stream = this._createReadStream(change.path);
+    }
     return provider.doUpload(change, stream);
   }
 
+  async _getProviderById(id) {
+    let cached = this._providerMap.get(id);
+    if (cached) {
+      return Bacon.once(cached).toPromise();
+    } else {
+      return Bacon.fromArray(this.providers)
+        .flatMap(provider => {
+          return Bacon.fromPromise(provider.getProvider().getUserId())
+            .flatMap(providerId => {
+              this._providerMap.set(providerId, provider);
+              if (providerId == id) {
+                return provider;
+              }
+            });
+        }).toPromise();
+    }
+  }
+
   async nextDownload(change) {
-    return Bacon.once(change).toPromise();
+    debug('new download for %s', change.path);
+    let provider = await this._getProviderById(change.provider);
+    return provider.doDownload(change);
   }
 
   _fetchChanges() {
     Bacon.fromArray(this.providers)
-      .flatMap(provider => provider.pullChanges())
-      .onValue(change => {
-        //debug(change);
-        this._downloadQueue.push(change);
+      .flatMap(provider => {
+        return Bacon.fromPromise(provider.getProvider().getUserId())
+          .onValue(providerId => {
+            provider.pullChanges()
+              .then(changes => {
+                changes.forEach(change => {
+                  change.provider = providerId;
+                  this._downloadQueue.push(change);
+                  debug('Pushed download (%s) to queue of %s', change.path, change.provider);
+                });
+              }).catch(err => {
+                debug('Error occurred in fetching changes for provider %s', providerId, err);
+              });
+          });
       });
   }
 
