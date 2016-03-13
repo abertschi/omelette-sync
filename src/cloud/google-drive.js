@@ -126,11 +126,12 @@ export default class GoogleDrive {
                   .flatMap(change => {
                     return this._detectDownloadChange(change)
                       .flatMap(file => {
+                        file.isDir = this._isDir(change.mimeType), // required by sync manager
                         file.payload = {
                           id: change.id,
                           name: change.name,
                           parentId: change.parentId,
-                          isDir: this._isDir(change.mimeType),
+                          isDir: file.isDir,
                           md5Checksum: change.md5Checksum
                         }
                         return file;
@@ -159,9 +160,11 @@ export default class GoogleDrive {
       .toPromise();
   }
 
-  doDownload(file) {
+  doDownload(file, stream) {
     debug('Downloading %s / %s', file.action, file.payload.id);
   }
+
+  // TODO: bug:   bean:app Moving /omelettes/bean/hi/Kopie von Untitled 2.pgn to /1.pgn +0ms
 
   _detectDownloadChange(file) {
     return Bacon.fromPromise(this.drive.getUserId())
@@ -197,7 +200,7 @@ export default class GoogleDrive {
                   } else if (index.name != file.name) { // rename
                     file.action = 'MOVE';
                     file.pathOrigin = pathOrigin;
-                    file.path = nodes.slice(0, nodes.length - 1) + '/' + file.name;
+                    file.path = this._nodesToPath(nodes.slice(0, nodes.length - 1)) + '/' + file.name;
                     return file;
 
                   } else if (!this._isDir(file.mimeType)) { // change
