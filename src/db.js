@@ -24,7 +24,7 @@ if (noSchema) {
 }
 
 db.on('trace', (f) => {
-  debug(f)
+  //debug(f)
 });
 
 export default db;

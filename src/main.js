@@ -27,7 +27,7 @@ if (lastrun && initDone) {
 }
 
 getGoogleAuthToken().then(bundle => {
-  debug('Got auth bundle', bundle);
+  //debug('Got auth bundle', bundle);
 
   let drive = new GoogleDrive({
     auth: bundle.auth,
