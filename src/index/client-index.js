@@ -1,6 +1,6 @@
 import Bacon from 'baconjs';
 import db from '../db.js';
-let debug = require('debug')('bean:app');
+let log = require('../debug.js')('index');
 import pathUtils from 'path';
 
 class ClientIndex {

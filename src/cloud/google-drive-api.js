@@ -7,7 +7,7 @@ import StorageApi from './storage-api.js';
 var agent = require('superagent-promise')(require('superagent'));
 var stream = require('stream');
 const mixin = require('es6-class-mixin');
-let debug = require('debug')('bean:app');
+let log = require('../debug.js')('gdrive');
 var google = require('googleapis');
 var path = require('path');
 var Promise = require('bluebird');
@@ -53,7 +53,7 @@ export default class GoogleDriveApi extends StorageApi {
             }
           });
       })
-      .doAction(() => debug(`Delete of ${location} done.`))
+      .doAction(() => log.debug(`${location} deleted`))
       .endOnError()
       .toPromise();
   }
@@ -69,6 +69,7 @@ export default class GoogleDriveApi extends StorageApi {
           used: response.storageQuota.usage,
         }
       })
+      .doAction(() => log.debug(`Storage requested`))
       .toPromise();
   }
 
@@ -80,6 +81,7 @@ export default class GoogleDriveApi extends StorageApi {
       return this._request(this.drive.about, 'get', options)
         .flatMap(response => response.user.permissionId)
         .doAction(id => this._userId = id)
+        .doAction((id) => log.debug(`Userid %s fetched`, id))
         .toPromise();
     } else {
       return Bacon.once(this._userId).toPromise();
@@ -109,8 +111,9 @@ export default class GoogleDriveApi extends StorageApi {
           fileId: fileId,
           alt: 'media'
         };
-
         return Bacon.fromBinder(sink => {
+          log.debug('Starting download of %s', location);
+
           this.drive.files.get(options)
             .on('end', () => {
               sink([new Bacon.Next(), new Bacon.End()]);
@@ -146,7 +149,6 @@ export default class GoogleDriveApi extends StorageApi {
         return Bacon.fromArray(response.changes)
           .filter(f => f.fileId)
           .flatMap(change => {
-            debug(JSON.stringify(change, null, 2));
             let file = change.file;
             let action;
             let parentId;
@@ -222,6 +224,7 @@ export default class GoogleDriveApi extends StorageApi {
           })
       })
       .endOnError()
+      .doAction(() => log.debug(`Node moved from %s to %s`, fromPath, toPath))
       .toPromise();
   }
 
@@ -257,7 +260,7 @@ export default class GoogleDriveApi extends StorageApi {
             };
           });
       })
-      .doAction(() => debug(`Upload of ${targetPath} done.`))
+      .doAction(() => log.debug(`File ${targetPath} uploaded`))
       .endOnError()
       .toPromise();
   }
@@ -289,7 +292,7 @@ export default class GoogleDriveApi extends StorageApi {
             };
           });
       })
-      .doAction(() => debug('Folder %s created', basedir))
+      .doAction(() => log.debug('Folder %s created', basedir))
       .endOnError()
       .toPromise();
   }
@@ -342,7 +345,7 @@ export default class GoogleDriveApi extends StorageApi {
           try {
             let stream = fs.createReadStream(source);
             stream.on('error', (e) => {
-              debug('Error in stream', e, e.stack);
+              log.error('Error in stream', e, e.stack);
               return new Bacon.Error(e);
             });
             return stream;
@@ -658,7 +661,7 @@ export default class GoogleDriveApi extends StorageApi {
   }
 
   _request(object, name, options = {}) {
-    //debug('Requesting: %s with %s', name, JSON.stringify(options));
+    log.trace('Requesting: %s with %s', name, options);
     let source = Bacon.fromPromise(new Promise((resolve, reject) => {
       try {
         let request = object[name](options, (err, response) => {
@@ -671,7 +674,7 @@ export default class GoogleDriveApi extends StorageApi {
           reject(err, request);
         });
       } catch (e) {
-        debug(e);
+        log.error(e);
         reject(e);
       }
     }));
@@ -691,8 +694,8 @@ export default class GoogleDriveApi extends StorageApi {
           if (beforeRetry) {
             beforeRetry(error);
           }
-          debug(`Network or HTTP error (${error.code}) occurred while (google-drive).`.red);
-          debug(`${error.stack}`.red);
+          log.error(`Network or HTTP error (${error.code}) occurred while (google-drive).`.red);
+          log.error(`${error.stack}`.red);
         }
         return retryable;
       },

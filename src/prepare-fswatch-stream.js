@@ -7,13 +7,13 @@ import {createBufferdStream} from './util/stream-helpers.js';
 import existsOnDisk from './util/exists-on-disk.js';
 import getFileStats from './util/get-file-stats.js';
 
-let debug = require('debug')('bean:watcher');
+let log = require('./debug.js')('watcher');
 
 export default function prepareFsWatchStream(file) {
 
   return createMetaStream(file)
     .doAction(file => {
-      debug('Processing %s with Action %s', file.path, file.action);
+      log.trace('Processing %s with action %s', file.path, file.action);
     });
 }
 

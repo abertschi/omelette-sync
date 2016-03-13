@@ -5,7 +5,7 @@ import Encryption from './encryption.js';
 import fs from 'fs';
 import ChangeRunner from './change-runner.js';
 
-let debug = require('debug')('bean:app');
+let log = require('./debug.js')('syncmanager');
 
 const ENCRYPTED_ENDING = '.enc';
 const UPLOAD_CONCURRENCY_LIMIT = 1;
@@ -86,7 +86,7 @@ export default class SyncManager {
     if (change.isDir || stream) {
       return provider.doUpload(change, stream);
     } else {
-      debug('Skipping upload %s wrong data', change.path);
+      log.error('Skipping upload %s wrong data', change.path);
       return null;
     }
   }
@@ -110,21 +110,21 @@ export default class SyncManager {
   }
 
   async nextDownload(file) {
-    debug('new download for %s', file.path);
+    log.debug('new download for %s', file.path);
 
     let promise;
     switch (file.action) {
       case 'MOVE':
-        debug('Moving %s to %s', file.pathOrigin, file.path); // TODO: impl
+        log.debug('Moving %s to %s', file.pathOrigin, file.path); // TODO: impl
         break;
       case 'REMOVE':
-        debug('Removing %s', file.path);
+        log.debug('Removing %s', file.path);
         break;
       default:
         if (file.action == 'ADD' && file.isDir) {
-          debug('Creating directory %s', file.path);
+          log.debug('Creating directory %s', file.path);
         } else {
-          debug('Downloading file %s', file.path);
+          log.debug('Downloading file %s', file.path);
           let provider = await this._getProviderById(file.provider);
           let writeStream = null; //this._createWriteStream(file.path);
           promise = provider.doDownload(file, writeStream);
@@ -140,14 +140,13 @@ export default class SyncManager {
           .onValue(providerId => {
             provider.pullChanges()
               .then(changes => {
-                debug('provider %s fetched %s changes', providerId, changes.length);
+                log.debug('provider %s fetched %s changes', providerId, changes.length);
                 changes.forEach(change => {
                   change.provider = providerId;
                   this._downloadQueue.push(change);
-                  debug('Pushed download (%s) to queue of %s', change.path, change.provider);
                 });
               }).catch(err => {
-                debug('Error occurred in fetching changes for provider %s', providerId, err.stack);
+                log.error('Error occurred in fetching changes for provider %s', providerId, err.stack);
               });
           });
       }).onValue();
@@ -157,7 +156,7 @@ export default class SyncManager {
     try {
       let stream = fs.createReadStream(location);
       stream.on('error', (err) => {
-        debug('Error in reading file %s', location, err);
+        log.error('Error in reading file %s', location, err);
       });
       if (this.useEncryption) {
         return this.encryption.encryptStream(stream);
@@ -165,7 +164,7 @@ export default class SyncManager {
         return stream;
       }
     } catch (err) {
-      debug('Error in reading file %s', location, err);
+      log.error('Error in reading file %s', location, err);
     }
   }
 

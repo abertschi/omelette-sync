@@ -4,8 +4,7 @@ import readline from 'readline';
 import Q from 'Q';
 import Bacon from 'baconjs';
 import fs from 'fs';
-
-let debug = require('debug')('bean:app');
+let log = require('../debug.js')('gauth');
 
 const TOKEN_DIR = (process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE) + '/.credentials/';
 const TOKEN_PATH = TOKEN_DIR + 'token.json';

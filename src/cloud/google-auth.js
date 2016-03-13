@@ -7,11 +7,7 @@ import Q from 'Q';
 import async from 'async';
 import colors from 'colors';
 
-let debug = require('debug')('bean-google-auth');
-
-
-//const TOKEN_DIR = (process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE) + '/.credentials/';
-//const TOKEN_PATH = TOKEN_DIR + 'token.json';
+let log = require('../debug.js')('gauth');
 
 const CLIENT_SECRET = require('./../../client_secret.json');
 const SCOPES = ['https://www.googleapis.com/auth/drive'];

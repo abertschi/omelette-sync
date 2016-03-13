@@ -10,7 +10,7 @@ import SyncManager from './sync-manager.js';
 import getGoogleAuthToken from './cloud/get-google-auth-token.js';
 import GoogleDrive from './cloud/google-drive.js';
 
-let debug = require('debug')('bean:app');
+let log = require('./debug.js')('');
 
 const WATCH_HOMEDIR = '/Users/abertschi/Dropbox/tmp';
 let watcher;
@@ -21,13 +21,13 @@ let init = true;
 if (lastrun && initDone) {
   lastrun = new Date(lastrun);
   init = false;
-  debug('Continuing work from ' + '%s'.green, lastrun);
+  log.info('Continuing work from ' + '%s'.green, lastrun);
 } else {
-  debug('Initializing application');
+  log.info('Initializing application');
 }
 
 getGoogleAuthToken().then(bundle => {
-  //debug('Got auth bundle', bundle);
+  log.trace('Got Google Auth Bundle', bundle);
 
   let drive = new GoogleDrive({
     auth: bundle.auth,
@@ -53,16 +53,16 @@ getGoogleAuthToken().then(bundle => {
 
   watcher.on('index-created', () => {
     Storage.setItem('initdone', new Date());
-    debug('Initializing is done');
+    log.debug('Initializing is done');
   });
 
   watcher.on('changes-since-done', () => {
     Storage.setItem('last_offline_changes', new Date());
-    debug('Fetching delta is done');
+    log.debug('Fetching delta is done');
   });
 
   watcher.on('change', change => {
-    debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
+    log.debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
     manager.pushUpload(change);
   });
 });
@@ -76,7 +76,7 @@ process.on('SIGINT', function() {
 });
 
 process.on('unhandledRejection', function(error, promise) {
-  console.error("UNHANDLED REJECTION".red, error, error.stack);
+  log.error("UNHANDLED REJECTION".red, error, error.stack);
 });
 
 keepalive();

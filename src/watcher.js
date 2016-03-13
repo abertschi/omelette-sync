@@ -7,6 +7,11 @@ import addToIndex from './index/add-to-index.js';
 import emptyIndex from './index/empty-index.js';
 import prepareFsWatchStream from './prepare-fswatch-stream.js';
 import prepareShellStream from './prepare-shell-stream.js';
+import ShellWatcher from './watcher/shell-watcher.js';
+import FsWatchWatcherOsx from './watcher/fswatch-watcher-osx.js';
+import os from 'os';
+import EventEmitter from 'events';
+
 import {
   createBufferdStream
 } from './util/stream-helpers.js';
@@ -14,12 +19,8 @@ import {
   listChanges,
   listRecursive
 } from './offline/shell-list-files.js'
-import ShellWatcher from './watcher/shell-watcher.js';
-import FsWatchWatcherOsx from './watcher/fswatch-watcher-osx.js';
-import os from 'os';
-import EventEmitter from 'events';
 
-let debug = require('debug')('bean:watcher');
+let log = require('./debug.js')('watcher');
 
 export default class Watcher extends EventEmitter {
 
@@ -37,7 +38,7 @@ export default class Watcher extends EventEmitter {
   }
 
   indexEverything() {
-    debug(`Creating new index for ${this.directory}`);
+    log.debug(`Creating new index for ${this.directory}`);
     emptyIndex().flatMap(() => {
         let stream = listRecursive(this.directory)
           .flatMap(file => {
@@ -54,7 +55,7 @@ export default class Watcher extends EventEmitter {
   }
 
   getChangesSince(date) {
-    debug(`Searching for changes since [%s] for ${this.directory}`, date);
+    log.debug(`Searching for changes since %s for %s`, date, this.directory);
     listChanges(this.directory, date).flatMap(file => {
         let shell = prepareShellStream(file);
         shell.onEnd(() => {
@@ -73,17 +74,17 @@ export default class Watcher extends EventEmitter {
   }
 
   unwatch() {
-    debug('Unwatching %s', this.directory);
+    log.debug('Unwatching %s', this.directory);
     if (this.watcher) {
       this.watcher.stopWatch();
     }
   }
 
   _enrichChange(file) {
-    debug('Processing change %s (%s) [%s]', file.path, file.action, file.id);
+    log.trace('Processing change %s (%s) [%s]', file.path, file.action, file.id);
     return addToIndex(file, this.directory)
       .map(() => {
-        debug('Index updated for %s', file.path);
+        log.trace('Index updated for %s', file.path);
         return file;
       })
       .map(file => {
@@ -101,7 +102,7 @@ export default class Watcher extends EventEmitter {
 
   _getWatcherStream() {
     if (this.type == 'Linux' || this.type == 'shell') {
-      debug('Using ShellWatcher to observe directory changes');
+      log.debug('Using ShellWatcher to observe directory changes');
       this.watcher = new ShellWatcher({
         directory: this.directory
       });
@@ -112,7 +113,7 @@ export default class Watcher extends EventEmitter {
         });
 
     } else if (this.type == 'fswatch' || this.type == 'Darwin') {
-      debug('Using FsWatchWatcherOsx to observe directory changes');
+      log.debug('Using FsWatchWatcherOsx to observe directory changes');
       this.watcher = new FsWatchWatcherOsx({
         directory: this.directory
       });

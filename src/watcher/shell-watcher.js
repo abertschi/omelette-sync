@@ -1,6 +1,6 @@
 import childProcess from 'child_process';
 import Bacon from 'baconjs';
-let debug = require('debug')('bean:watcher:shell');
+let log = require('../debug.js')('watcher');
 var path = require('path');
 
 export default class ShellScanner {
@@ -18,7 +18,7 @@ export default class ShellScanner {
 
   watch() {
     const SCRIPT = __dirname + '/watch-directory.sh';
-    debug('Start watching of %s [%s, %s]', this.directory, this.interval, this.lookback);
+    log.debug('Start watching of %s [%s, %s]', this.directory, this.interval, this.lookback);
 
     this.watchSpawn = childProcess.spawn('sh', [SCRIPT, this.directory, this.interval, this.lookback]);
     return this._processOutput(this.watchSpawn);
@@ -48,7 +48,6 @@ export default class ShellScanner {
         const PATH_STRT = id.length + 3;
         let path = output.substring(PATH_STRT);
 
-        debug(path, id, isDir);
         return {
           id: id,
           isDir: isDir,
@@ -62,7 +61,7 @@ export default class ShellScanner {
       let end = Bacon
         .fromEvent(cmd.stdout, 'close')
         .doAction(code => {
-          debug('Stream ended');
+          log.debug('Stream ended');
           bus.end()
         });
 
@@ -71,7 +70,7 @@ export default class ShellScanner {
           .map(raw => String(raw))
           .flatMap(founds => Bacon.fromArray(founds.split('\n')))
           .filter(f => f.trim() != '')
-          .doAction(f => debug('error: ', f));
+          .doAction(f => log.error('error: ', f));
 
 
       results.concat(end).merge(errors)

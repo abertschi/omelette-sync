@@ -1,6 +1,5 @@
     var crypto = require('crypto');
-
-    let debug = require('debug')('bean:app');
+    let log = require('./debug.js')('encrypt');
 
     export default class Encryption {
 
@@ -30,20 +29,20 @@
       encryptStream(stream) {
         let encrypt = crypto.createCipher(this.algorithm, this.password);
         return stream.on('error', error => {
-          debug(error, error.stack);
+          log.error(error, error.stack);
           throw error;
         }).pipe(encrypt).on('error', error => {
-          debug(error, error.stack);
+          log.error(error, error.stack);
           throw error;
         });
       }
 
       decryptStream(stream) {
         return stream.on('error', err => {
-          debug(err);
+          log.error(err);
           throw error;
         }).pipe(this.decrypt).on('error', err => {
-          debug(err);
+          log.error(err);
           throw err;
         });
       }

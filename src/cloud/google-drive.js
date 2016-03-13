@@ -158,7 +158,6 @@ export default class GoogleDrive {
         return changes;
       })
       .endOnError()
-      .log()
       .toPromise();
   }
 
@@ -173,7 +172,7 @@ export default class GoogleDrive {
       .flatMap(providerId => {
         return this.cloudIndex.get(providerId, file.id)
           .flatMap(index => {
-            log.info('_detectDownloadChange for %s with index %s', JSON.stringify(file, null, 2), JSON.stringify(index, null, 2));
+            log.trace('_detectDownloadChange for %s with index %s', JSON.stringify(file, null, 2), JSON.stringify(index, null, 2));
             if (!index) { // add
               return Bacon.fromPromise(this.drive.getPathByFileId(file.id))
                 .flatMap(path => {
@@ -210,7 +209,7 @@ export default class GoogleDrive {
                     file.path = pathOrigin;
                     return file;
                   } else {
-                    log.debug('Ignoring change %s', file);
+                    log.debug('Ignoring change %s', file.id, file.name);
                     // change is not relevant because
                     // - change was uploaded from this client
                     // - a parent directory is listed as changed if a child changes

@@ -1,6 +1,6 @@
 import ChangeQueue from './change-queue.js';
 import isNetworkError from './cloud/is-network-error.js';
-let debug = require('debug')('bean:app');
+let log = require('./debug.js')('runner');
 import Bacon from 'baconjs';
 import Encryption from './encryption.js';
 import fs from 'fs';
@@ -72,7 +72,7 @@ export default class ChangeRunner {
         this._changesActive--;
       })
       .catch(err => {
-        debug(err, err.stack ? err.stack : '');
+        log.error(err, err.stack ? err.stack : '');
         if (isNetworkError(err)) {
           this.queue.flagAsRedo(change);
         } else {
@@ -85,7 +85,7 @@ export default class ChangeRunner {
   _registerQueueEvents() {
     this.queue.on('empty', () => {
       this._running = false;
-      debug('All changes done. Stop checking until new events');
+      log.debug('All changes done. Stop checking until new events');
     });
 
     this.queue.on('not-empty', () => {

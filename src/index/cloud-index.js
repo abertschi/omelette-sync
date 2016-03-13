@@ -1,6 +1,6 @@
 import Bacon from 'baconjs';
 import db from '../db.js';
-let debug = require('debug')('bean:app');
+let log = require('../debug.js')('index');
 
 export default class CloudIndex {
 
@@ -16,10 +16,10 @@ export default class CloudIndex {
         if (row) {
           let load = row.payload ? this._mergeObjects(this._parseJson(row.payload.payload), payload) : payload;
           let json = JSON.stringify(load);
-          //debug('Updating payload from %s to %s: ', JSON.stringify(row.payload), json);
+          log.trace('Updating payload from %s to %s: ', JSON.stringify(row.payload), json);
           return Bacon.fromNodeCallback(db, 'get', UPDATE, json, key, provider);
         } else {
-          //debug('Inserting payload %s: ', JSON.stringify(payload));
+          log.trace('Inserting payload %s: ', JSON.stringify(payload));
           let json = JSON.stringify(payload);
           return Bacon.fromNodeCallback(db, 'get', INSERT, provider, key, json);
         }

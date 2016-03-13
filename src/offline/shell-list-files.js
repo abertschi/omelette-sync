@@ -2,7 +2,7 @@ import childProcess from 'child_process';
 import Bacon from 'baconjs';
 var path = require('path');
 
-let debug = require('debug')('bean:watcher:shell');
+let log = require('../debug.js')('watcher');
 
 export function listRecursive(directory) {
   const SCRIPT = __dirname + '/list-directory-recursive.sh';
@@ -41,7 +41,6 @@ function processOutput(cmd) {
         isDir: isDir
       };
 
-      debug(file);
       return file;
     });
 
@@ -50,7 +49,7 @@ function processOutput(cmd) {
   let end = Bacon
     .fromEvent(cmd.stdout, 'close')
     .onValue(code => {
-      debug('Detection of offline changes ended');
+      log.debug('Detection of offline changes ended');
       bus.end()
     });
 
@@ -58,7 +57,7 @@ function processOutput(cmd) {
     .fromEvent(cmd.stderr, 'data')
     .map(raw => String(raw))
     .flatMap(founds => Bacon.fromArray(founds.split('\n')))
-    .doAction(f => debug(f))
+    .doAction(f => log.error(f))
     .filter(f => f.trim() != '');
 
 

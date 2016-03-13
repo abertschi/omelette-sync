@@ -6,7 +6,7 @@ import getChildrenOfDirectoryFromIndex from './index/get-children-of-directory-f
 
 import {list} from './offline/shell-list-files.js'
 
-let debug = require('debug')('bean:watcher');
+let log = require('./debug.js')('watcher');
 
 export default function prepareShellStream(file) {
 
@@ -14,17 +14,17 @@ export default function prepareShellStream(file) {
     .flatMap(index => {
       if (!index) {
         file.action = 'ADD';
-        debug('detect [%s] for %s', file.action, file.path);
+        log.trace('detect [%s] for %s', file.action, file.path);
         return file;
       } else if (index && !file.isDir) {
         if (file.path == index.path) {
           file.action = 'CHANGE';
-          debug('detect [%s] for %s', file.action, file.path);
+          log.trace('detect [%s] for %s', file.action, file.path);
           return file;
         } else {
           file.pathOrigin = index.path;
           file.action = 'MOVE';
-          debug('detect [%s] for %s', file.action, file.path);
+          log.trace('detect [%s] for %s', file.action, file.path);
           return file;
         }
       } else if (index && file.isDir) {
@@ -56,7 +56,7 @@ function compareDiskWithIndex(file, fromDisk, fromIndex) {
          * Check change again to detect RENAME.
          */
         if (disk.path != index.path) {
-          debug('detect [MOVE] for %s to %s', index.path, disk.path);
+          log.trace('detect [MOVE] for %s to %s', index.path, disk.path);
           disk.pathOrigin = index.path;
           disk.action = 'MOVE';
           sink(disk);
@@ -65,7 +65,7 @@ function compareDiskWithIndex(file, fromDisk, fromIndex) {
         /*
          * Change is not on disk but in index, REMOVE change from index.
          */
-        debug('detect [REMOVE] for %s', index.path);
+        log.trace('detect [REMOVE] for %s', index.path);
         sink({
           id: index.id,
           path: index.path,
@@ -79,7 +79,7 @@ function compareDiskWithIndex(file, fromDisk, fromIndex) {
         /*
          * Change is on disk but not in index, check change again so it will be ADDED.
          */
-        debug('check for possible [ADD] of %s', disk.path);
+        log.trace('check for possible [ADD] of %s', disk.path);
         prepareShellStream(disk)
           .onValue(change => {
             sink(change);

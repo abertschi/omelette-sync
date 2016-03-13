@@ -1,8 +1,8 @@
 import childProcess from 'child_process';
 import Bacon from 'baconjs';
 import getFileStats from './../util/get-file-stats.js';
-let debug = require('debug')('bean:watcher:fswatch');
-let trace = require('debug')('bean:watcher:trace');
+
+let log = require('../debug.js')('watcher');
 var path = require('path');
 import {
   createBufferdStream
@@ -62,7 +62,6 @@ export default class FsWatchWatcherOsx {
       .flatMap(founds => Bacon.fromArray(founds.split('\n')))
       .filter(f => f.trim() != '')
       .flatMap(output => {
-        trace(output);
 
         const PATH_SEPARATOR = output.lastIndexOf(' ');
         let path = output.substring(0, PATH_SEPARATOR);
@@ -97,23 +96,27 @@ export default class FsWatchWatcherOsx {
           if (source.action == 'MOVE' && target.action == 'MOVE') {
             if (isInDirectory(source.path)) {
               if (isTrash(target.path)) {
-                debug('Detect MOVE to trash of %s (to %s)', source.path, target.path);
+                log.trace('Detect MOVE to trash of %s (to %s)', source.path, target.path);
+
                 source.action = 'REMOVE';
                 return source;
               } else if (path.basename(source.path) == path.basename(target.path) || path.dirname(source.path) == path.dirname(target.path)) {
                 if (isInDirectory(target.path)) {
-                  debug('Detect MOVE within watched directory [%s to %s]', source.path, target.path);
+                  log.trace('Detect MOVE within watched directory [%s to %s]', source.path, target.path);
+
                   target.pathOrigin = source.path;
                   return target;
                 } else {
-                  debug('Detect MOVE out of watched directory [%s to %s]', source.path, target.path);
+                  log.trace('Detect MOVE out of watched directory [%s to %s]', source.path, target.path);
+
                   source.action = 'REMOVE';
                   return source;
                 }
               }
             } else if (isInDirectory(target.path)) {
               if (path.basename(source.path) == path.basename(target.path) || path.dirname(source.path) == path.dirname(target.path)) {
-                debug('Detect ADD of file moved to watched directory [%s to %s]', source.path, target.path);
+                log.trace('Detect ADD of file moved to watched directory [%s to %s]', source.path, target.path);
+
                 target.action = 'ADD';
                 return target;
               }
@@ -129,7 +132,7 @@ export default class FsWatchWatcherOsx {
     let errors = Bacon
       .fromEvent(cmd.stderr, 'data')
       .map(raw => new Bacon.Error(String(raw)))
-      .doAction(f => debug(f));
+      .doAction(f => log.error(f));
 
     return results.merge(moveStream).merge(errors);
   }
