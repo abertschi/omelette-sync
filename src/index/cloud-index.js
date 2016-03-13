@@ -32,7 +32,7 @@ export default class CloudIndex {
   }
 
   has(provider, key) {
-    return this.get().flatMap(row => row != null);
+    return this.get(provider, key).flatMap(row => row != null);
   }
 
   get(provider, key) {

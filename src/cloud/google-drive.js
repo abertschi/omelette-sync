@@ -115,6 +115,7 @@ export default class GoogleDrive {
 
     return Bacon.fromPromise(this._getPageTokenKey())
       .flatMap(lastPageTokenKey => {
+        debug(lastPageTokenKey);
         pageTokenKey = lastPageTokenKey;
         return Bacon.fromPromise(Settings.get(lastPageTokenKey))
           .flatMap(lastPageToken => {
@@ -127,6 +128,7 @@ export default class GoogleDrive {
                     return this._detectDownloadChange(change)
                       .flatMap(file => {
                         file.isDir = this._isDir(change.mimeType), // required by sync manager
+
                         file.payload = {
                           id: change.id,
                           name: change.name,
@@ -208,8 +210,9 @@ export default class GoogleDrive {
                     file.path = pathOrigin;
                     return file;
                   } else {
-                    // apparently a parent directory marked as well if a child is changed.
-                    // ignore parent directory
+                    // apparently a parent directory is listed as changed as well
+                    // if a child changes
+                    // ignore it
                   }
                 }).filter(set => set);
             }
@@ -263,15 +266,18 @@ export default class GoogleDrive {
     return mime ? mime == FOLDER_MIME_TYPE : null;
   }
 
-  async _getPageTokenKey() {
-    if (!this._driveId) {
-      return this.drive.getUserId()
-        .then(id => {
-          this._driveId = LAST_PAGE_TOKEN_PREFIX + id;
-          return this._driveId;
-        });
-    } else {
-      return Bacon.once(this._driveId).toPromise();
-    }
+  _getPageTokenKey() {
+    return Bacon.once(this._driveId)
+      .flatMap(cachedId => {
+        if (!cachedId) {
+          return Bacon.fromPromise(this.drive.getUserId())
+            .flatMap(id => {
+              this._driveId = LAST_PAGE_TOKEN_PREFIX + id;
+              return this._driveId;
+            })
+        } else {
+          return cachedId;
+        }
+      }).toPromise();
   }
 }

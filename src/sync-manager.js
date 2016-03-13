@@ -147,7 +147,7 @@ export default class SyncManager {
                   debug('Pushed download (%s) to queue of %s', change.path, change.provider);
                 });
               }).catch(err => {
-                debug('Error occurred in fetching changes for provider %s', providerId, err);
+                debug('Error occurred in fetching changes for provider %s', providerId, err.stack);
               });
           });
       }).onValue();
