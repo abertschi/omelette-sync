@@ -10,6 +10,7 @@ let debug = require('debug')('bean:app');
 const ENCRYPTED_ENDING = '.enc';
 const UPLOAD_CONCURRENCY_LIMIT = 1;
 const DOWNLOAD_CONCURRENCY_LIMIT = 1;
+const DOWNLOAD_SUFFIX = '.download';
 
 export default class SyncManager {
 
@@ -108,10 +109,28 @@ export default class SyncManager {
     }
   }
 
-  async nextDownload(change) {
-    debug('new download for %s', change.path);
-    let provider = await this._getProviderById(change.provider);
-    return provider.doDownload(change);
+  async nextDownload(file) {
+    debug('new download for %s', file.path);
+
+    let promise;
+    switch (file.action) {
+      case 'MOVE':
+        debug('Moving %s to %s', file.pathOrigin, file.path); // TODO: impl
+        break;
+      case 'REMOVE':
+        debug('Removing %s', file.path);
+        break;
+      default:
+        if (file.action == 'ADD' && file.isDir) {
+          debug('Creating directory %s', file.path);
+        } else {
+          debug('Downloading file %s', file.path);
+          let provider = await this._getProviderById(file.provider);
+          let writeStream = null; //this._createWriteStream(file.path);
+          promise = provider.doDownload(file, writeStream);
+        }
+    }
+    return promise;
   }
 
   _fetchChanges() {
@@ -151,7 +170,7 @@ export default class SyncManager {
   }
 
   _createWriteStream(location) {
-    let stream = fs.createWriteStream(location);
+    let stream = fs.createWriteStream(location + DOWNLOAD_SUFFIX);
     if (this.useEncryption) {
       return this.encryption.decryptStream(stream);
     } else {
