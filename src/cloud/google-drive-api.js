@@ -146,6 +146,7 @@ export default class GoogleDriveApi extends StorageApi {
         return Bacon.fromArray(response.changes)
           .filter(f => f.fileId)
           .flatMap(change => {
+            debug(JSON.stringify(change, null, 2));
             let file = change.file;
             let action;
             let parentId;
