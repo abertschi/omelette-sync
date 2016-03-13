@@ -6,6 +6,7 @@ import Bacon from 'baconjs';
 import CloudIndex from '../index/cloud-index.js';
 
 const LAST_PAGE_TOKEN_PREFIX = 'last_page_token_';
+const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 
 export default class GoogleDrive {
 
@@ -22,15 +23,9 @@ export default class GoogleDrive {
 
     this.watchHome = options.watchHome;
     this._driveId;
-
-    let stream = fs.createWriteStream('/tmp/download.txt');
-    this.drive.getStorage()
-      .then(e => debug('done', JSON.stringify(e)))
-      .catch(e => debug('error', e));
   }
 
   doUpload(file, upstream) {
-    debug(file);
     let targetPath = file.path.replace(this.watchHome, '');
     let promise;
 
@@ -39,20 +34,26 @@ export default class GoogleDrive {
       case 'CHANGE':
         if (file.isDir) {
           promise = this.drive.createFolder(targetPath);
-          promise.then(done => {
-            debug('INTERCEPTED THEN', done);
-            return done;
-          });
         } else {
           promise = this.drive.upload(upstream, targetPath);
         }
+        promise = Bacon
+          .fromPromise(promise)
+          .flatMap(done => this._postUploadAdd(file, done).flatMap(() => done))
+          .toPromise();
         break;
       case 'MOVE':
         let fromPath = file.pathOrigin.replace(this.watchHome, '');
-        promise = this.drive.move(fromPath, targetPath);
+        promise = Bacon
+          .fromPromise(this.drive.move(fromPath, targetPath))
+          .flatMap(done => this._postUploadMove(file, done).flatMap(() => done))
+          .toPromise();
         break;
       case 'REMOVE':
-        promise = this.drive.remove(targetPath);
+        promise = Bacon
+          .fromPromise(this.drive.remove(targetPath))
+          .flatMap(done => this._postUploadRemove(file, done).flatMap(() => done))
+          .toPromise();
         break;
       default:
         debug('Unknown change type', file);
@@ -60,110 +61,192 @@ export default class GoogleDrive {
     return promise;
   }
 
+  _postUploadAdd(file, response) {
+    let transformTree = (tree, parentId = null, directories = []) => {
+      directories.push({
+        id: tree.id,
+        name: tree.name,
+        parentId: parentId
+      });
+      return tree.child ? transformTree(tree.child, tree.id, directories) : directories;
+    };
+
+    return Bacon.fromPromise(this.drive.getUserId())
+      .flatMap(providerId => {
+        return Bacon.fromArray(transformTree(response.properties.tree))
+          .flatMap(folder => {
+            let payload = {
+              name: folder.name,
+              parentId: folder.parentId
+            };
+            return this.cloudIndex.addOrUpdate(providerId, folder.id, payload);
+          });
+      })
+      .fold(null, () => {})
+      .flatMap(() => file);
+  }
+
+  _postUploadMove(file, response) {
+    return Bacon.fromPromise(this.drive.getUserId())
+      .flatMap(providerId => {
+        return this.cloudIndex.get(providerId, response.properties.id)
+          .flatMap(index => {
+            index.parentId = response.properties.parentId;
+            index.name = response.properties.name;
+            return this.cloudIndex.addOrUpdate(providerId, response.properties.id, index);
+          });
+      });
+  }
+
+  _postUploadRemove(file, response) {
+    return Bacon.fromPromise(this.drive.getUserId())
+      .flatMap(providerId => {
+        return this.cloudIndex.remove(providerId, response.properties.id);
+      });
+  }
+
+  getProvider() {
+    return this.drive;
+  }
+
   pullChanges() {
+    let pageTokenKey;
+    let pageToken;
+
     return Bacon.fromPromise(this._getPageTokenKey())
       .flatMap(lastPageTokenKey => {
+        pageTokenKey = lastPageTokenKey;
         return Bacon.fromPromise(Settings.get(lastPageTokenKey))
           .flatMap(lastPageToken => {
             return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
               .flatMap(pull => {
-                return Bacon.sequentially(500, pull.changes)
+                pageToken = pull.startPageToken;
+                return Bacon.sequentially(1000, pull.changes)
                   .flatMap(change => {
                     return this._detectDownloadChange(change)
-                      .flatMap(change => {
-                        if (change.action != 'REMOVE') {
-                          return this._addOrUpdateDownload(change)
-                            .flatMap(() => change);
+                      .flatMap(file => {
+                        file.payload = {
+                          id: change.id,
+                          name: change.name,
+                          parentId: change.parentId,
+                          isDir: this._isDir(change.mimeType),
+                          md5Checksum: change.md5Checksum
+                        }
+                        return file;
+                      })
+                      .flatMap(file => {
+                        if (file.action == 'REMOVE') {
+                          return this._removeChangeFromIndex(file).flatMap(() => file);
                         } else {
-                          return this._removeDownload(change)
-                            .flatMap(() => change);
+                          return this._addChangeToIndex(file).flatMap(() => file);
                         }
                       });
                   });
-              })
-              .flatMap(change => {
-                if (change.action == 'MOVE' || change.action == 'ADD') {
-                  return Bacon.fromPromise(this.drive.getPathByFileId(change.id))
-                    .flatMap(path => {
-                      change.path = path;
-                      return change;
-                    });
-                } else {
-                  return change;
-                }
-              }).flatMap(change => {
-                if (!change.path) {
-                  change.path = change.id;
-                }
-                return change;
-              })
+              });
           });
-      }).log();
+      })
+      .fold([], (changes, change) => {
+        changes.push(change);
+        return changes;
+      })
+      .flatMap(changes => {
+        Settings.set(pageTokenKey, pageToken)
+        return changes;
+      })
+      .endOnError()
+      .log()
+      .toPromise();
   }
 
-  _removeDownload(change) {
+  doDownload(file) {
+    debug('Downloading %s / %s', file.action, file.payload.id);
+  }
+
+  _detectDownloadChange(file) {
+    return Bacon.fromPromise(this.drive.getUserId())
+      .flatMap(providerId => {
+        return this.cloudIndex.get(providerId, file.id)
+          .flatMap(index => {
+            if (!index) { // add
+              return this.drive.getPathByFileId(file.id)
+                .flatMap(path => {
+                  file.action = 'ADD';
+                  file.path = path;
+                  return file;
+                });
+            } else {
+              return this._composeNodesWithIndex(providerId, file.id)
+                .flatMap(nodes => {
+                  let pathOrigin = this._nodesToPath(nodes);
+
+                  if (file.action = 'REMOVE') { // remove
+                    file.path = pathOrigin;
+                    return file;
+
+                  } else if (index.parentId != file.parentId) { // move
+                    return this.drive.getPathByFileId(file.id)
+                      .flatMap(path => {
+                        file.action = 'MOVE';
+                        file.pathOrigin = pathOrigin;
+                        file.path = path;
+                        return file;
+                      });
+
+                  } else if (index.name != file.name) { // rename
+                    file.action = 'MOVE';
+                    file.pathOrigin = pathOrigin;
+                    file.path = nodes.slice(nodes.length - 1) + '/' + file.name;
+                    return file;
+
+                  } else { // change
+                    file.action = 'CHANGE';
+                    file.path = pathOrigin;
+                  }
+                });
+            }
+          });
+      });
+  }
+
+  _composeNodesWithIndex(providerId, fileId) {
+    let walkToRoot = (fileId) => {
+      return this.cloudIndex.get(providerId, fileId, parents = [])
+        .flatMap(index => {
+          if (index && index.name) {
+            parents.push(index.name);
+            return walkToRoot(index.parentId, parents);
+          } else {
+            return parents;
+          }
+        });
+    }
+    return walkToRoot(fileId).toPromise();
+  }
+
+  _nodesToPath(nodes) {
+    let path = '';
+    nodes.forEach(d => {
+      path += '/' + d;
+    });
+    return path;
+  }
+
+  _removeChangeFromIndex(change) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.remove(providerId, change.id);
       });
   }
 
-  _addOrUpdateDownload(change) {
+  _addChangeToIndex(change) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.addOrUpdate(providerId, change.id, change.payload);
       });
   }
 
-  // _prepareRemove(change) {
-  //   return Bacon.fromPromise(this.drive.getUserId())
-  //     .flatMap(providerId => {
-  //       return this.cloudIndex.get(providerId, change.id)
-  //         .flatMap(index => {
-  //           return this.cloudIndex.get(providerId, index.parentId)
-  //             .flatMap(parentIndex => {
-  //               return Bacon.fromPromise(this.drive.getPathByFileId())
-  //             })
-  //         });
-  //     });
-  // }
-
-  _detectDownloadChange(change) {
-    return Bacon.fromPromise(this.drive.getUserId())
-      .flatMap(providerId => {
-        return this.cloudIndex.get(providerId, change.id)
-          .flatMap(index => {
-            change.payload = {};
-            if (!index) {
-              change.action = 'ADD';
-              change.payload = {
-                id: change.id,
-                name: change.name,
-                parentId: change.parentId,
-                md5Checksum: change.md5Checksum
-              };
-            } else {
-              if (change.action = 'REMOVE') {
-                change.payload = index;
-              } else {
-                if (index.parentId != change.parentId) {
-                  change.payload.parentId = change.parentId;
-                  change.payload.parentIdOrigin = index.parentId;
-                }
-                if (index.name != change.name) {
-                  change.payload.name = change.name;
-                }
-                if (index.md5Checksum != change.md5Checksum) {
-                  change.action = 'CHANGE';
-                  change.payload.md5Checksum = change.md5Checksum;
-                } else {
-                  change.action = 'MOVE';
-                }
-              }
-            }
-            return change;
-          });
-      });
+  _isDir(mime) {
+    return mime ? mime == FOLDER_MIME_TYPE : null;
   }
 
   async _getPageTokenKey() {
@@ -176,9 +259,5 @@ export default class GoogleDrive {
     } else {
       return Bacon.once(this._driveId).toPromise();
     }
-  }
-
-  doDownload(file) {
-
   }
 }
