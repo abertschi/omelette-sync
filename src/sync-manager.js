@@ -82,7 +82,12 @@ export default class SyncManager {
     if (!change.isDir) {
       stream = this._createReadStream(change.path);
     }
-    return provider.doUpload(change, stream);
+    if (change.isDir || stream) {
+      return provider.doUpload(change, stream);
+    } else {
+      debug('Skipping upload %s wrong data', change.path);
+      return null;
+    }
   }
 
   async _getProviderById(id) {
@@ -116,6 +121,7 @@ export default class SyncManager {
           .onValue(providerId => {
             provider.pullChanges()
               .then(changes => {
+                debug('provider %s fetched %s changes', providerId, changes.length);
                 changes.forEach(change => {
                   change.provider = providerId;
                   this._downloadQueue.push(change);
@@ -125,15 +131,22 @@ export default class SyncManager {
                 debug('Error occurred in fetching changes for provider %s', providerId, err);
               });
           });
-      });
+      }).onValue();
   }
 
   _createReadStream(location) {
-    let stream = fs.createReadStream(location);
-    if (this.useEncryption) {
-      return this.encryption.encryptStream(stream);
-    } else {
-      return stream;
+    try {
+      let stream = fs.createReadStream(location);
+      stream.on('error', (err) => {
+        debug('Error in reading file %s', location, err);
+      });
+      if (this.useEncryption) {
+        return this.encryption.encryptStream(stream);
+      } else {
+        return stream;
+      }
+    } catch (err) {
+      debug('Error in reading file %s', location, err);
     }
   }
 
