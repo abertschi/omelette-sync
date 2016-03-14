@@ -133,23 +133,25 @@ export default class SyncManager {
     return promise;
   }
 
-  _fetchChanges() {
-    Bacon.fromArray(this.providers)
+  _fetchChanges() { // TODO: do not refetch if previous fetching not yet done
+    let fetch = Bacon.fromArray(this.providers)
       .flatMap(provider => {
         return Bacon.fromPromise(provider.getProvider().getUserId())
-          .onValue(providerId => {
-            provider.pullChanges()
-              .then(changes => {
-                log.debug('provider %s fetched %s changes', providerId, changes.length);
-                changes.forEach(change => {
-                  change.provider = providerId;
-                  this._downloadQueue.push(change);
-                });
-              }).catch(err => {
-                log.error('Error occurred in fetching changes for provider %s', providerId, err.stack);
-              });
-          });
-      }).onValue();
+          .flatMap(providerId => {
+            return Bacon.fromPromise(provider.pullChanges())
+              .doAction(changes => log.debug('provider %s fetched %s changes', providerId, changes.length))
+              .flatMap(changes => Bacon.fromArray(changes))
+              .flatMap(change => {
+                change.provider = providerId;
+                this._downloadQueue.push(change);
+              })
+          })
+      });
+
+    fetch.onError(err => log.error('Error occurred in fetching for changes', err));
+    return new Promise((resolve, reject) => {
+      fetch.onEnd(resolve);
+    });
   }
 
   _createReadStream(location) {
@@ -179,8 +181,14 @@ export default class SyncManager {
 
   _startFetchInterval() {
     // TODO: check internet connectivity before calling providers
+    let working = false;
     this._fetchInterval = setInterval(() => {
-      this._fetchChanges();
+      if (!working) {
+        working = true;
+        this._fetchChanges()
+          .then(() => working = false)
+          .catch(() => working = false);
+      }
     }, this.fetchIntervalTime);
   }
 
