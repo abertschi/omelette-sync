@@ -24,7 +24,10 @@ This application is in an early development stage and not yet ready for any use.
 - [ ] Frontend to configure accounts and see sync status
 - [ ] Menubar application for OSX
 
-
+## Design notes
+- communication between client and daemon with websockets
+- electron client
+- mac osx menubar app
 
 ## License
 This project is released under the GNU General Public License v3.
