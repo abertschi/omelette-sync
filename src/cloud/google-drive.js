@@ -1,5 +1,4 @@
 import GoogleDriveApi from './google-drive-api.js';
-let debug = require('debug')('bean:app');
 import fs from 'fs';
 import Settings from './../settings.js';
 import Bacon from 'baconjs';
@@ -63,6 +62,7 @@ export default class GoogleDrive {
   }
 
   _postUploadAdd(file, response) {
+    log.debug(response);
     let transformTree = (tree, parentId = null, directories = []) => {
       directories.push({
         id: tree.id,
@@ -122,8 +122,10 @@ export default class GoogleDrive {
             return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
               .flatMap(pull => {
                 pageToken = pull.startPageToken;
-                return Bacon.sequentially(500, pull.changes)
+                return Bacon.sequentially(1000, pull.changes.reverse())
+                  // changes.reverse(): do newest change last, important to handle new directories correctly
                   .flatMap(change => {
+                    log.debug('Detecting download change for %s', change);
                     return this._detectDownloadChange(change)
                       .flatMap(file => {
                         log.trace('Change detected: %s', file);
@@ -167,13 +169,13 @@ export default class GoogleDrive {
 
   // TODO: bug:   bean:app Moving /omelettes/bean/hi/Kopie von Untitled 2.pgn to /1.pgn +0ms
   // TODO: bug: Moving '/bb533dodddddddddsaSdddddsdddd' to '/bb533dodddddddddsaSdddddsdddd' +0ms
-  
+
   _detectDownloadChange(file) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.get(providerId, file.id)
           .flatMap(index => {
-            log.trace('_detectDownloadChange for %s with index %s', JSON.stringify(file, null, 2), JSON.stringify(index, null, 2));
+            log.trace('_detectDownloadChange for %s with index %s', file, index);
             if (!index) { // add
               return Bacon.fromPromise(this.drive.getPathByFileId(file.id))
                 .flatMap(path => {
@@ -222,14 +224,18 @@ export default class GoogleDrive {
   }
 
   _composeNodesWithIndex(providerId, fileId) {
+    log.trace('composing path with index for %s', fileId);
     let walkToRoot = (fileId, parents = []) => {
       return this.cloudIndex.get(providerId, fileId)
         .flatMap(index => {
           if (index && index.name) {
+            log.trace('Add %s to path', index.name);
             parents.push(index.name);
             return walkToRoot(index.parentId, parents);
           } else {
+            log.trace('Path done. %s not belonging to path', index);
             parents.reverse();
+            log.info(parents);
             return parents;
           }
         });
