@@ -12,15 +12,15 @@ export default class CloudIndex {
     const INSERT = 'INSERT into CLOUD_INDEX(provider, key, payload) VALUES(?, ?, ?)';
 
     return this.get(provider, key)
-      .flatMap(row => {
-        if (row) {
-          log.info('db payload: ', row.payload);
-          let load = row.payload ? this._mergeObjects(this._parseJson(row.payload), payload) : payload;
-          let json = JSON.stringify(load);
-          log.trace('Updating payload from %s to %s: ', JSON.stringify(row.payload), json);
+      .flatMap(stored => {
+        if (stored) {
+          let merged = stored ? this._mergeObjects(stored, payload) : payload;
+          let json = JSON.stringify(merged);
+
+          log.trace('updating payload from %s to %s: ', stored, merged);
           return Bacon.fromNodeCallback(db, 'run', UPDATE, json, key, provider);
         } else {
-          log.trace('Inserting payload %s: ', JSON.stringify(payload));
+          log.trace('inserting payload %s: ', payload);
           let json = JSON.stringify(payload);
           return Bacon.fromNodeCallback(db, 'run', INSERT, provider, key, json);
         }
