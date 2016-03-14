@@ -13,7 +13,7 @@ var path = require('path');
 var Promise = require('bluebird');
 
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
-const BACON_SEQUENTIAL_WAIT = 10;
+const BACON_SEQUENTIAL_WAIT = 1;
 
 let sample = {
   name: 'folder',
@@ -128,23 +128,32 @@ export default class GoogleDriveApi extends StorageApi {
   }
 
   listChanges(pageToken) {
-    return Bacon.once(pageToken)
-      .flatMap(() => pageToken ? pageToken : this._getStartPageToken())
-      .flatMap(token => {
-        let options = {
-          pageToken: token,
-          includeRemoved: true,
-          fields: 'changes, newStartPageToken, nextPageToken' // todo exclude more fields
-        }
-        return this._request(this.drive.changes, 'list', options);
-      })
-      .flatMap(response => {
-        if (response.nextPageToken) {
-          return Bacon.fromPromise(this.listChanges(response.nextPageToken)); // TODO: reimplement recursion, not working this way
-        } else {
-          return Bacon.fromArray([new Bacon.Next(response), new Bacon.End()]);
-        }
-      })
+    let fetch = (pageToken, pages = {}) => {
+      return Bacon.once(pageToken)
+        .flatMap(() => pageToken ? pageToken : this._getStartPageToken())
+        .flatMap(token => {
+          let options = {
+            pageToken: token,
+            includeRemoved: true,
+            fields: 'changes, newStartPageToken, nextPageToken' // TODO: exclude more fields
+          }
+          return this._request(this.drive.changes, 'list', options);
+        })
+        .flatMap(response => {
+          if (!pages.changes) {
+            pages.changes = []
+          }
+          pages.changes = pages.changes.concat(response.changes);
+          pages.newStartPageToken = response.newStartPageToken;
+          if (response.nextPageToken) {
+            return fetch(response.nextPageToken, pages);
+          } else {
+            return pages;
+          }
+        });
+    };
+
+    return fetch(pageToken)
       .flatMap(response => {
         return Bacon.fromArray(response.changes)
           .filter(f => f.fileId)
@@ -265,7 +274,6 @@ export default class GoogleDriveApi extends StorageApi {
       .toPromise();
   }
 
-
   createFolder(basedir) {
     basedir = this._qualifyDirectory(basedir);
     let childdirs = this._splitIntoDirs(basedir);
@@ -277,7 +285,7 @@ export default class GoogleDriveApi extends StorageApi {
         return Bacon.fromPromise(this._createFolders(directoryTree, childdirs));
       })
       .flatMap((innerFolder) => {
-        // Remove all folders from tree that are outside syncdir.
+        // Remove all folders from tree which are outside of syncdir
         return Bacon.fromArray(this._splitIntoDirs(this.mountDir))
           .fold(0, (sum, dir) => {
             return sum + 1;
@@ -299,8 +307,8 @@ export default class GoogleDriveApi extends StorageApi {
 
   createSingleFolder(folderName, parentId = null) {
     let searchArgs = {};
-
-    return Bacon.once().flatMap(() => {
+    return Bacon.once()
+      .flatMap(() => {
         if (parentId) {
           searchArgs.withParentId = parentId;
           return searchArgs;
