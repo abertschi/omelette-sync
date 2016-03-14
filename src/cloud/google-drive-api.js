@@ -238,7 +238,6 @@ export default class GoogleDriveApi extends StorageApi {
           .flatMap(search => {
             if (search && search.files && search.files.length) {
               let fileId = search.files[0].id;
-              log.info(fileId);
               return this.uploadExisting(source, fileId);
             } else {
               let parentId = folders.properties.id;
@@ -371,7 +370,6 @@ export default class GoogleDriveApi extends StorageApi {
       })
       .flatMap(upload => {
         return Bacon.fromBinder(sink => {
-          log.debug(upload);
           let d = this.drive.files.update(upload, (err, response) => {
               if (err) sink(new Bacon.Error(err));
               else sink([new Bacon.Next(response), new Bacon.End()]);
@@ -614,7 +612,6 @@ export default class GoogleDriveApi extends StorageApi {
       }
     };
     let t = remove(tree, number);
-    log.debug(t);
     return t;
   }
 
@@ -732,7 +729,7 @@ export default class GoogleDriveApi extends StorageApi {
         return retryable;
       },
       delay: function(context) {
-        return Math.pow(2, context.retriesDone) * 1000 + Math.floor((Math.random() * 60) + 1) * 1000;
+        return /*Math.pow(2, context.retriesDone) * 1000 + */ Math.floor((Math.random() * 5) + 1) * 1000;
       }
     })
   }
