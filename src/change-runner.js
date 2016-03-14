@@ -72,7 +72,7 @@ export default class ChangeRunner {
         this._changesActive--;
       })
       .catch(err => {
-        log.error(err, err.stack ? err.stack : '');
+        log.error(err, err.stack);
         if (isNetworkError(err)) {
           this.queue.flagAsRedo(change);
         } else {
