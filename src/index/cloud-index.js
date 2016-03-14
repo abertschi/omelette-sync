@@ -14,21 +14,22 @@ export default class CloudIndex {
     return this.get(provider, key)
       .flatMap(row => {
         if (row) {
-          let load = row.payload ? this._mergeObjects(this._parseJson(row.payload.payload), payload) : payload;
+          log.info('db payload: ', row.payload);
+          let load = row.payload ? this._mergeObjects(this._parseJson(row.payload), payload) : payload;
           let json = JSON.stringify(load);
           log.trace('Updating payload from %s to %s: ', JSON.stringify(row.payload), json);
-          return Bacon.fromNodeCallback(db, 'get', UPDATE, json, key, provider);
+          return Bacon.fromNodeCallback(db, 'run', UPDATE, json, key, provider);
         } else {
           log.trace('Inserting payload %s: ', JSON.stringify(payload));
           let json = JSON.stringify(payload);
-          return Bacon.fromNodeCallback(db, 'get', INSERT, provider, key, json);
+          return Bacon.fromNodeCallback(db, 'run', INSERT, provider, key, json);
         }
       });
   }
 
   remove(provider, key) {
     const SQL = 'DELETE from CLOUD_INDEX where provider=? and key=?';
-    return Bacon.fromNodeCallback(db, 'get', SQL, provider, key);
+    return Bacon.fromNodeCallback(db, 'run', SQL, provider, key);
   }
 
   has(provider, key) {
