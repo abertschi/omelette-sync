@@ -7,6 +7,7 @@ let log = require('../debug.js')('gdrive');
 
 const LAST_PAGE_TOKEN_PREFIX = 'last_page_token_';
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
+const BACON_SEQUENTIAL_WAIT = 1000;
 
 export default class GoogleDrive {
 
@@ -122,7 +123,7 @@ export default class GoogleDrive {
             return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
               .flatMap(pull => {
                 pageToken = pull.startPageToken;
-                return Bacon.sequentially(1000, pull.changes.reverse())
+                return Bacon.sequentially(BACON_SEQUENTIAL_WAIT, pull.changes.reverse())
                   // changes.reverse(): do newest change last, important to handle new directories correctly
                   .flatMap(change => {
                     log.debug('Detecting download change for %s', change);
