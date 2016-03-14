@@ -63,7 +63,8 @@ export default class GoogleDrive {
   }
 
   _postUploadAdd(file, response) {
-    log.debug(response);
+    log.trace('Post Upload with: %s', response);
+
     let transformTree = (tree, parentId = null, directories = []) => {
       directories.push({
         id: tree.id,
@@ -126,10 +127,9 @@ export default class GoogleDrive {
                 return Bacon.sequentially(BACON_SEQUENTIAL_WAIT, pull.changes.reverse())
                   // changes.reverse(): do newest change last, important to handle new directories correctly
                   .flatMap(change => {
-                    log.debug('Detecting download change for %s', change);
+                    log.trace('pulling changes: found change %s', change);
                     return this._detectDownloadChange(change)
                       .flatMap(file => {
-                        log.trace('Change detected: %s', file);
                         file.isDir = this._isDir(change.mimeType), // required by sync manager
 
                         file.payload = {
