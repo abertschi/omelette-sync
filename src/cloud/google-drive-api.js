@@ -228,32 +228,33 @@ export default class GoogleDriveApi extends StorageApi {
       .toPromise();
   }
 
-  upload(source, targetPath, properties = {}) {
+  upload(source, targetPath) {
     let dirname = path.dirname(targetPath);
     let basename = path.basename(targetPath);
 
     return Bacon.fromPromise(this.createFolder(dirname))
-      .flatMap(res => {
-        let parentId = res.properties.id;
+      .flatMap(folders => {
         return Bacon.fromPromise(this.search(basename))
           .flatMap(search => {
             if (search && search.files && search.files.length) {
-              return Bacon.fromArray(search.files)
-                .flatMap(file => Bacon.fromPromise(this.removeById(file.id)));
+              let fileId = search.files[0].id;
+              log.info(fileId);
+              return this.uploadExisting(source, fileId);
             } else {
-              return Bacon.once();
+              let parentId = folders.properties.id;
+              return this.uploadWithParentId(source, basename, parentId);
             }
           })
-          .flatMap(() => this.uploadWithParentId(source, basename, parentId))
-          .flatMap(response => {
-            let tree = res.properties.tree;
+          .flatMap(uploaded => {
+            let tree = folders.properties.tree;
             let child = this._getMostInnerChild(tree);
-            child.name = basename;
-            child.id = response.id;
-
+            child.child = {
+              name: basename,
+              id: uploaded.id
+            };
             return {
               properties: {
-                id: response.id,
+                id: uploaded.id,
                 name: basename,
                 tree: tree
               }
@@ -336,7 +337,7 @@ export default class GoogleDriveApi extends StorageApi {
       .toPromise();
   }
 
-  uploadWithParentId(source, name, parentId) {
+  _createReadStream(source) {
     return Bacon.once()
       .flatMap(() => {
         if (source instanceof stream.Readable) {
@@ -353,7 +354,42 @@ export default class GoogleDriveApi extends StorageApi {
             return new Bacon.Error(e);
           }
         }
+      });
+  }
+
+  uploadExisting(source, fileId) {
+    return this._createReadStream(source)
+      .flatMap(body => {
+        return {
+          fileId: fileId,
+          resource: {},
+          media: {
+            body: body,
+          },
+          fields: 'id, name, parents'
+        };
       })
+      .flatMap(upload => {
+        return Bacon.fromBinder(sink => {
+          log.debug(upload);
+          let d = this.drive.files.update(upload, (err, response) => {
+              if (err) sink(new Bacon.Error(err));
+              else sink([new Bacon.Next(response), new Bacon.End()]);
+            })
+            .on('error', (err) => sink(new Bacon.Error(err)));
+        })
+      })
+      .flatMap(result => {
+        return {
+          id: result.id,
+          name: result.name,
+          parentId: result.parents[0]
+        };
+      });
+  }
+
+  uploadWithParentId(source, name, parentId) {
+    return this._createReadStream(source)
       .flatMap(body => {
         return {
           resource: {
@@ -368,17 +404,11 @@ export default class GoogleDriveApi extends StorageApi {
       })
       .flatMap(upload => {
         return Bacon.fromBinder(sink => {
-          // if an upload fails, do not retry to upload because input stream must be reset first
           this.drive.files.create(upload, (err, response) => {
-              if (err) {
-                sink(new Bacon.Error(err));
-              } else {
-                sink([new Bacon.Next(response), new Bacon.End()]);
-              }
+              if (err) sink(new Bacon.Error(err));
+              else sink([new Bacon.Next(response), new Bacon.End()]);
             })
-            .on('error', (err) => {
-              sink(new Bacon.Error(err));
-            });
+            .on('error', (err) => sink(new Bacon.Error(err)));
         })
       })
       .flatMap(result => {
@@ -583,7 +613,9 @@ export default class GoogleDriveApi extends StorageApi {
         return tree;
       }
     };
-    return remove(tree, number);
+    let t = remove(tree, number);
+    log.debug(t);
+    return t;
   }
 
   _createFolders(directoryTree, dirsToCreate, index = 0) {
