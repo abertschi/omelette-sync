@@ -4,22 +4,23 @@ import Bacon from 'baconjs';
 import Encryption from './encryption.js';
 import fs from 'fs';
 import ChangeRunner from './change-runner.js';
+import FileWorker from './file-worker.js';
 
 let log = require('./debug.js')('syncmanager');
 
-const ENCRYPTED_ENDING = '.enc';
 const UPLOAD_CONCURRENCY_LIMIT = 1;
 const DOWNLOAD_CONCURRENCY_LIMIT = 1;
-const DOWNLOAD_SUFFIX = '.download';
+const DOWNLOAD_SUFFIX = '.syncdownload';
+const ENCRYPTION_SUFFIX = '.enc';
 
 export default class SyncManager {
 
   constructor(options = {}) {
     this.providers = options.providers || [];
     this.fetchIntervalTime = options.fetchInterval || 10000;
-
     this.uploadStrategy = options.uploadStrategy || 'first-full'; /// 'distribute'
-    this.watchHome = options.watchHome;
+    this.downloadSuffix = options.downloadSuffix || DOWNLOAD_SUFFIX;
+
     if (options.encryption) {
       this.useEncryption = true;
       this.encryptFileNames = options.encryption.encryptFilenames;
@@ -28,6 +29,13 @@ export default class SyncManager {
       this.useEncryption = false;
     }
 
+    if (options.watchHome && !options.watchHome.endsWith('/')) {
+      this.watchHome = options.watchHome + '/';
+    } else {
+      this.watchHome = options.watchHome;
+    }
+
+    this._fileWorker = new FileWorker();
     this._fetchInterval;
     this._providerMap = new Map();
 
@@ -36,10 +44,6 @@ export default class SyncManager {
     });
     this._downloadQueue = new ChangeQueue({
       tablename: 'DOWNLOAD_QUEUE'
-    });
-
-    this.encryptor = new Encryption({
-      password: this.password
     });
 
     if (!this.watchHome) {
@@ -86,6 +90,7 @@ export default class SyncManager {
         stream = this._createReadStream(change.path, reject);
       }
       if (change.isDir || stream) {
+        log.info('Uploading %s', change.path);
         provider.doUpload(change, stream)
           .then(resolve)
           .catch(reject);
@@ -94,6 +99,11 @@ export default class SyncManager {
         return null;
       }
     });
+  }
+
+  finishDownload(target) {
+    let source = path + DOWNLOAD_SUFFIX;
+    return this.move(source, target);
   }
 
   async _getProviderById(id) {
@@ -114,26 +124,43 @@ export default class SyncManager {
     }
   }
 
-  async nextDownload(file) {
-    log.debug('new download for %s', file.path);
+  _prefixWithWatchHome(basepath) {
+    if (basepath.startsWith('/')) {
+      basepath = basepath.substr(1);
+    }
+    return `${this.watchHome}${basepath}`;
+  }
 
+  async nextDownload(file) {
     let promise;
-    switch (file.action) {
-      case 'MOVE':
-        log.debug('Moving %s to %s', file.pathOrigin, file.path); // TODO: impl
-        break;
-      case 'REMOVE':
-        log.debug('Removing %s', file.path);
-        break;
-      default:
-        if (file.action == 'ADD' && file.isDir) {
-          log.debug('Creating directory %s', file.path);
-        } else {
-          log.debug('Downloading file %s', file.path);
-          let provider = await this._getProviderById(file.provider);
-          let writeStream = null; //this._createWriteStream(file.path);
-          promise = provider.doDownload(file, writeStream);
-        }
+
+    if (file.path) {
+      let pathPrefixed = this._prefixWithWatchHome(file.path);
+
+      if (file.action == 'MOVE' && file.pathOrigin) {
+        log.info('Moving %s to %s', file.pathOrigin, pathPrefixed);
+        let pathFrom = this._prefixWithWatchHome(file.pathOrigin);
+        promise = this._fileWorker.move(pathFrom, pathPrefixed);
+
+      } else if (file.action == 'REMOVE') {
+        log.info('Removing %s', pathPrefixed);
+        promise = this._fileWorker.remove(pathPrefixed);
+
+      } else if (file.action == 'ADD' && file.isDir) {
+        log.info('Adding directory %s', pathPrefixed);
+        promise = this._fileWorker.createDirectory(pathPrefixed);
+
+      } else if (file.action == 'ADD' || file.action == 'CHANGE') {
+        log.info('Adding or updating file %s', pathPrefixed);
+        let provider = await this._getProviderById(file.provider);
+        let writeStream = this._createWriteStream(pathPrefixed);
+        promise = provider.doDownload(file, writeStream);
+
+      } else {
+        log.error('Invalid data %s', file);
+      }
+    } else {
+      log.error('Invalid data %s', file);
     }
     return promise;
   }
@@ -159,31 +186,6 @@ export default class SyncManager {
     });
   }
 
-  _createReadStream(location, error) {
-    let stream = fs.createReadStream(location);
-    stream.on('error', error);
-
-    if (this.useEncryption) {
-      return this.encryption.encryptStream(stream)
-        .on('error', error);
-    } else {
-      return stream;
-    }
-  }
-
-  _createWriteStream(location, error) {
-    let stream = fs.createWriteStream(location + DOWNLOAD_SUFFIX);
-    stream.on('error', error);
-
-    if (this.useEncryption) {
-      let enc = this.encryption.decryptStream(stream);
-      enc.on('error', error);
-      return enc;
-    } else {
-      return stream;
-    }
-  }
-
   _startFetchInterval() {
     // TODO: check internet connectivity before calling providers
     let working = false;
@@ -207,5 +209,30 @@ export default class SyncManager {
     // - track which provider stores what file?
     // how to make sure to delete all files within a folder remove
     return this.providers.length ? this.providers[0] : null;
+  }
+
+  _createReadStream(location, error) {
+    let stream = fs.createReadStream(location);
+    stream.on('error', error);
+
+    if (this.useEncryption) {
+      return this.encryption.encryptStream(stream)
+        .on('error', error);
+    } else {
+      return stream;
+    }
+  }
+
+  _createWriteStream(location, error) {
+    let stream = fs.createWriteStream(location); //TODO: suffix?
+    stream.on('error', error);
+
+    if (this.useEncryption) {
+      let enc = this.encryption.decryptStream(stream);
+      enc.on('error', error);
+      return enc;
+    } else {
+      return stream;
+    }
   }
 }

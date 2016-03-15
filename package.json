@@ -26,6 +26,7 @@
     "es6-class-mixin": "^1.0.5",
     "google-auth-library": "^0.9.7",
     "googleapis": "^2.1.7",
+    "mkdirp": "^0.5.1",
     "node-persist": "0.0.8",
     "node-request-retry": "^1.0.0",
     "q": "^1.4.1",
@@ -34,6 +35,7 @@
     "sqlite3": "^3.1.1",
     "superagent": "^1.8.0-beta.2",
     "superagent-promise": "^1.1.0",
+    "trash": "^3.4.1",
     "username": "^2.0.0",
     "webworker": "^0.8.4"
   }

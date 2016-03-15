@@ -21,7 +21,6 @@ export default class GoogleDrive {
       mountDir: options.mountDir
     });
     this.cloudIndex = new CloudIndex();
-
     this.watchHome = options.watchHome;
     this._driveId;
   }
@@ -133,7 +132,6 @@ export default class GoogleDrive {
                       .flatMap(file => {
                         log.error('a');
                         file.isDir = this._isDir(change.mimeType), // required by sync manager
-
                           file.payload = {
                             id: change.id,
                             name: change.name,
@@ -171,7 +169,7 @@ export default class GoogleDrive {
     log.debug('Downloading %s / %s', file.action, file.payload.id);
   }
 
-  // TODO: bug:   bean:app Moving /omelettes/bean/hi/Kopie von Untitled 2.pgn to /1.pgn +0ms
+  // TODO: bug: bean:app Moving /omelettes/bean/hi/Kopie von Untitled 2.pgn to /1.pgn +0ms
   // TODO: bug: Moving '/bb533dodddddddddsaSdddddsdddd' to '/bb533dodddddddddsaSdddddsdddd' +0ms
 
   _detectDownloadChange(file) {
