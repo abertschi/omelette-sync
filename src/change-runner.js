@@ -67,12 +67,11 @@ export default class ChangeRunner {
   _markAsDoneIfNoError(promise, change) {
     promise
       .then(then => {
-
         this.queue.flagAsDone(change);
         this._changesActive--;
       })
       .catch(err => {
-        log.error(err, err.stack);
+        log.error('An Error occurred while processing change', change, err, err.stack);
         if (isNetworkError(err)) {
           this.queue.flagAsRedo(change);
         } else {

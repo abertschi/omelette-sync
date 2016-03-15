@@ -13,7 +13,7 @@ var path = require('path');
 var Promise = require('bluebird');
 
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
-const BACON_SEQUENTIAL_WAIT = 1;
+const BACON_SEQUENTIAL_WAIT = 100;
 
 let sample = {
   name: 'folder',

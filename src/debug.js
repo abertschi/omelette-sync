@@ -3,7 +3,7 @@
 
  module.exports = function debug(title) {
    return {
-     error: get(`omelette:${title}:err`),
+     error: require('debug')(`omelette:${title}:err`),
      trace: get(`omelette:${title}:trace`),
      info: get(`omelette:${title}:info`),
      debug: get(`omelette:${title}:debug`),

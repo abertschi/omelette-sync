@@ -78,17 +78,22 @@ export default class SyncManager {
   }
 
   async nextUpload(change) {
-    let provider = this._getProvider();
-    let stream = null;
-    if (!change.isDir) {
-      stream = this._createReadStream(change.path);
-    }
-    if (change.isDir || stream) {
-      return provider.doUpload(change, stream);
-    } else {
-      log.error('Skipping upload %s wrong data', change.path);
-      return null;
-    }
+    return new Promise((resolve, reject) => {
+      let provider = this._getProvider();
+      let stream = null;
+
+      if (!change.isDir) {
+        stream = this._createReadStream(change.path, reject);
+      }
+      if (change.isDir || stream) {
+        provider.doUpload(change, stream)
+          .then(resolve)
+          .catch(reject);
+      } else {
+        log.error('Skipping upload %s wrong data', change.path);
+        return null;
+      }
+    });
   }
 
   async _getProviderById(id) {
@@ -154,26 +159,26 @@ export default class SyncManager {
     });
   }
 
-  _createReadStream(location) {
-    try {
-      let stream = fs.createReadStream(location);
-      stream.on('error', (err) => {
-        log.error('Error in reading file %s', location, err);
-      });
-      if (this.useEncryption) {
-        return this.encryption.encryptStream(stream);
-      } else {
-        return stream;
-      }
-    } catch (err) {
-      log.error('Error in reading file %s', location, err);
+  _createReadStream(location, error) {
+    let stream = fs.createReadStream(location);
+    stream.on('error', error);
+
+    if (this.useEncryption) {
+      return this.encryption.encryptStream(stream)
+        .on('error', error);
+    } else {
+      return stream;
     }
   }
 
-  _createWriteStream(location) {
+  _createWriteStream(location, error) {
     let stream = fs.createWriteStream(location + DOWNLOAD_SUFFIX);
+    stream.on('error', error);
+
     if (this.useEncryption) {
-      return this.encryption.decryptStream(stream);
+      let enc = this.encryption.decryptStream(stream);
+      enc.on('error', error);
+      return enc;
     } else {
       return stream;
     }
