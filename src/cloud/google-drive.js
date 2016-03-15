@@ -38,6 +38,7 @@ export default class GoogleDrive {
         } else {
           promise = this.drive.upload(upstream, targetPath);
         }
+        //TODO: what if 2 folder created in one request? not handled so far
         promise = Bacon
           .fromPromise(promise)
           .flatMap(done => this._postUploadAdd(file, done).flatMap(() => done))
@@ -124,24 +125,26 @@ export default class GoogleDrive {
             return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
               .flatMap(pull => {
                 pageToken = pull.startPageToken;
-                return Bacon.sequentially(BACON_SEQUENTIAL_WAIT, pull.changes.reverse())
+                return Bacon.fromArray(pull.changes.reverse())
                   // changes.reverse(): do newest change last, important to handle new directories correctly
                   .flatMap(change => {
                     log.trace('pulling changes: found change %s', change);
                     return this._detectDownloadChange(change)
                       .flatMap(file => {
+                        log.error('a');
                         file.isDir = this._isDir(change.mimeType), // required by sync manager
 
-                        file.payload = {
-                          id: change.id,
-                          name: change.name,
-                          parentId: change.parentId,
-                          isDir: file.isDir,
-                          md5Checksum: change.md5Checksum
-                        }
+                          file.payload = {
+                            id: change.id,
+                            name: change.name,
+                            parentId: change.parentId,
+                            isDir: file.isDir,
+                            md5Checksum: change.md5Checksum
+                          }
                         return file;
                       })
                       .flatMap(file => {
+                        log.error('b');
                         if (file.action == 'REMOVE') {
                           return this._removeChangeFromIndex(file).flatMap(() => file);
                         } else {
@@ -178,10 +181,11 @@ export default class GoogleDrive {
           .flatMap(index => {
             log.trace('_detectDownloadChange for %s with index %s', file, index);
             if (!index) { // add
-              return Bacon.fromPromise(this.drive.getPathByFileId(file.id))
-                .flatMap(path => {
+              return this._composeNodesWithIndex(providerId, file.parentId)
+                .flatMap(parentNodes => {
                   file.action = 'ADD';
-                  file.path = path;
+                  parentNodes.push(file.name);
+                  file.path = this._nodesToPath(parentNodes);
                   return file;
                 });
             } else {
@@ -194,11 +198,12 @@ export default class GoogleDrive {
                     return file;
 
                   } else if (index.parentId != file.parentId) { // move
-                    return Bacon.fromPromise(this.drive.getPathByFileId(file.id))
-                      .flatMap(path => {
+                    return this._composeNodesWithIndex(providerId, file.parentId)
+                      .flatMap(parentNodes => {
                         file.action = 'MOVE';
                         file.pathOrigin = pathOrigin;
-                        file.path = path;
+                        parentNodes.push(file.name);
+                        file.path = this._nodesToPath(parentNodes);
                         return file;
                       });
 
@@ -234,9 +239,7 @@ export default class GoogleDrive {
             parents.push(index.name);
             return walkToRoot(index.parentId, parents);
           } else {
-            log.trace('Path done. %s not belonging to path', index);
             parents.reverse();
-            log.info(parents);
             return parents;
           }
         });
