@@ -78,7 +78,9 @@ export default class SyncManager {
   }
 
   pushUpload(change) {
-    this._uploadQueue.push(change);
+    if (change && change.path && !change.path.endsWith(DOWNLOAD_SUFFIX)) {
+      this._uploadQueue.push(change);
+    }
   }
 
   async nextUpload(change) {
@@ -99,44 +101,6 @@ export default class SyncManager {
         return null;
       }
     });
-  }
-
-  finishDownload(target) {
-    let source = path + DOWNLOAD_SUFFIX;
-    return this.move(source, target);
-  }
-
-  async _getProviderById(id) {
-    let cached = this._providerMap.get(id);
-    if (cached) {
-      return Bacon.once(cached).toPromise();
-    } else {
-      return Bacon.fromArray(this.providers)
-        .flatMap(provider => {
-          return Bacon.fromPromise(provider.getProvider().getUserId())
-            .flatMap(providerId => {
-              this._providerMap.set(providerId, provider);
-              if (providerId == id) {
-                return provider;
-              }
-            });
-        }).toPromise();
-    }
-  }
-
-  _prefixWithWatchHome(location) {
-    /*
-     * Example of watchHome: /home/abertschi/Drive/ (always '/' at the end)
-     * Example of location : /folder/myfile.txt (always '/' at the start)
-     * In order to combine watchHome with location,
-     * 1 directory of watchHome must be removed.
-     */
-    if (location.startsWith('/')) {
-      location = location.substr(1);
-    }
-    let endIndex = this.watchHome.lastIndexOf('/', this.watchHome.length -1 );
-    let basepath = this.watchHome.substr(0, endIndex);
-    return `${basepath}/${location}`;
   }
 
   async nextDownload(file) {
@@ -161,13 +125,18 @@ export default class SyncManager {
       } else if (file.action == 'ADD' || file.action == 'CHANGE') {
         log.info('Adding or updating file %s', pathPrefixed);
         let provider = await this._getProviderById(file.provider);
+
         promise = new Promise((resolve, reject) => {
           let writeStream = this._createWriteStream(pathPrefixed, reject);
           let done = provider.doDownload(file, writeStream);
           if (!done) {
-            resolve();
+            this.finishDownload(pathPrefixed).then(resolve).catch(reject);
           } else {
-            done.then(resolve).catch(reject);
+            done
+              .then(downloaded => {
+                this.finishDownload(pathPrefixed).then(resolve).catch(reject);
+              })
+              .catch(reject);
           }
         });
       } else {
@@ -179,7 +148,13 @@ export default class SyncManager {
     return promise;
   }
 
-  _fetchChanges() { // TODO: do not refetch if previous fetching not yet done
+
+  finishDownload(target) {
+    let source = target + DOWNLOAD_SUFFIX;
+    return this._fileWorker.move(source, target);
+  }
+
+  _fetchChanges() {
     let fetch = Bacon.fromArray(this.providers)
       .flatMap(provider => {
         return Bacon.fromPromise(provider.getProvider().getUserId())
@@ -202,6 +177,7 @@ export default class SyncManager {
 
   _startFetchInterval() {
     // TODO: check internet connectivity before calling providers
+    
     let working = false;
     this._fetchInterval = setInterval(() => {
       if (!working) {
@@ -238,7 +214,7 @@ export default class SyncManager {
   }
 
   _createWriteStream(location, error) {
-    let stream = fs.createWriteStream(location); //TODO: suffix?
+    let stream = fs.createWriteStream(location + DOWNLOAD_SUFFIX); //TODO: suffix?
     stream.on('error', error);
 
     if (this.useEncryption) {
@@ -248,5 +224,38 @@ export default class SyncManager {
     } else {
       return stream;
     }
+  }
+
+  async _getProviderById(id) {
+    let cached = this._providerMap.get(id);
+    if (cached) {
+      return Bacon.once(cached).toPromise();
+    } else {
+      return Bacon.fromArray(this.providers)
+        .flatMap(provider => {
+          return Bacon.fromPromise(provider.getProvider().getUserId())
+            .flatMap(providerId => {
+              this._providerMap.set(providerId, provider);
+              if (providerId == id) {
+                return provider;
+              }
+            });
+        }).toPromise();
+    }
+  }
+
+  _prefixWithWatchHome(location) {
+    /*
+     * Example of watchHome: /home/abertschi/Drive/ (always '/' at the end)
+     * Example of location : /folder/myfile.txt (always '/' at the start)
+     * In order to combine watchHome with location,
+     * 1 directory of watchHome must be removed.
+     */
+    if (location.startsWith('/')) {
+      location = location.substr(1);
+    }
+    let endIndex = this.watchHome.lastIndexOf('/', this.watchHome.length - 1);
+    let basepath = this.watchHome.substr(0, endIndex);
+    return `${basepath}/${location}`;
   }
 }
