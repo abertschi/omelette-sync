@@ -72,7 +72,7 @@ export default class ChangeRunner {
         this._changesActive--;
       })
       .catch(err => {
-        log.error('An Error occurred while processing change', change, err, err.stack);
+        log.error('An Error occurred while processing change', change, err, err ? err.stack: '');
         if (isNetworkError(err)) {
           this.queue.flagAsRedo(change);
         } else {

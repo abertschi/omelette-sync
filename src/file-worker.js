@@ -1,6 +1,7 @@
 import mkdirp from 'mkdirp';
 import trash from 'trash';
 import fs from 'fs';
+let log = require('./debug.js')('fileworker');
 
 export default class FileWorker {
 
@@ -25,7 +26,7 @@ export default class FileWorker {
   remove(path) {
     log.info('Removing %s', path);
     return Promise.resolve();
-    //eturn trash([path]);
+    //return trash([path]);
   }
 
   createDirectory(path) {

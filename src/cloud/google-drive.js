@@ -193,6 +193,7 @@ export default class GoogleDrive {
 
                   if (file.action == 'REMOVE') { // remove
                     file.path = pathOrigin;
+                    log.info('Remove with composed path: %s', pathOrigin);
                     return file;
 
                   } else if (index.parentId != file.parentId) { // move
@@ -237,7 +238,10 @@ export default class GoogleDrive {
             parents.push(index.name);
             return walkToRoot(index.parentId, parents);
           } else {
+
+            parents.pop();
             parents.reverse();
+            log.trace('Composed index: %s', parents);
             return parents;
           }
         });

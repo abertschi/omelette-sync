@@ -124,11 +124,19 @@ export default class SyncManager {
     }
   }
 
-  _prefixWithWatchHome(basepath) {
-    if (basepath.startsWith('/')) {
-      basepath = basepath.substr(1);
+  _prefixWithWatchHome(location) {
+    /*
+     * Example of watchHome: /home/abertschi/Drive/ (always '/' at the end)
+     * Example of location : /folder/myfile.txt (always '/' at the start)
+     * In order to combine watchHome with location,
+     * 1 directory of watchHome must be removed.
+     */
+    if (location.startsWith('/')) {
+      location = location.substr(1);
     }
-    return `${this.watchHome}${basepath}`;
+    let endIndex = this.watchHome.lastIndexOf('/', this.watchHome.length -1 );
+    let basepath = this.watchHome.substr(0, endIndex);
+    return `${basepath}/${location}`;
   }
 
   async nextDownload(file) {
@@ -153,9 +161,15 @@ export default class SyncManager {
       } else if (file.action == 'ADD' || file.action == 'CHANGE') {
         log.info('Adding or updating file %s', pathPrefixed);
         let provider = await this._getProviderById(file.provider);
-        let writeStream = this._createWriteStream(pathPrefixed);
-        promise = provider.doDownload(file, writeStream);
-
+        promise = new Promise((resolve, reject) => {
+          let writeStream = this._createWriteStream(pathPrefixed, reject);
+          let done = provider.doDownload(file, writeStream);
+          if (!done) {
+            resolve();
+          } else {
+            done.then(resolve).catch(reject);
+          }
+        });
       } else {
         log.error('Invalid data %s', file);
       }
