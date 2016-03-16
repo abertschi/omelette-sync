@@ -11,58 +11,33 @@ const BACON_SEQUENTIAL_WAIT = 1000;
 
 export default class GoogleDrive {
 
-  constructor(options = {
-    watchHome: null,
-    mountDir: null,
-    auth: null
-  }) {
+  constructor(options = {}) {
     this.drive = new GoogleDriveApi({
       auth: options.auth,
       mountDir: options.mountDir
     });
+
     this.cloudIndex = new CloudIndex();
-    this.watchHome = options.watchHome;
     this._driveId;
   }
 
-  doUpload(file, upstream) {
-    let targetPath = file.path.replace(this.watchHome, '');
-    let promise;
-
-    switch (file.action) {
-      case 'ADD':
-      case 'CHANGE':
-        if (file.isDir) {
-          promise = this.drive.createFolder(targetPath);
-        } else {
-          promise = this.drive.upload(upstream, targetPath);
-        }
-        //TODO: what if 2 folder created in one request? not handled so far
-        promise = Bacon
-          .fromPromise(promise)
-          .flatMap(done => this._postUploadAdd(file, done).flatMap(() => done))
-          .toPromise();
-        break;
-      case 'MOVE':
-        let fromPath = file.pathOrigin.replace(this.watchHome, '');
-        promise = Bacon
-          .fromPromise(this.drive.move(fromPath, targetPath))
-          .flatMap(done => this._postUploadMove(file, done).flatMap(() => done))
-          .toPromise();
-        break;
-      case 'REMOVE':
-        promise = Bacon
-          .fromPromise(this.drive.remove(targetPath))
-          .flatMap(done => this._postUploadRemove(file, done).flatMap(() => done))
-          .toPromise();
-        break;
-      default:
-        log.debug('Unknown change type', file);
-    }
-    return promise;
+  accountId() {
+    return this.drive.getUserId();
   }
 
-  _postUploadAdd(file, response) {
+  providerName() {
+    return 'Google Drive';
+  }
+
+  providerImpl() {
+    return this.drive;
+  }
+
+  upload(stream, location) {
+    return this.drive.upload(stream, location);
+  }
+
+  postUpload(file, response) {
     log.trace('Post Upload with: %s', response);
 
     let transformTree = (tree, parentId = null, directories = []) => {
@@ -86,10 +61,24 @@ export default class GoogleDrive {
           });
       })
       .fold(null, () => {})
-      .flatMap(() => file);
+      .flatMap(() => file)
+      .toPromise();
   }
 
-  _postUploadMove(file, response) {
+  download(stream, file) {
+    log.trace('Downloading %s / %s', file.action, file.payload.id);
+    return Promise.resolve();
+  }
+
+  postDownload(file, response) {
+    return Promise.resolve();
+  }
+
+  move(sourceLocation, targetLocation) {
+    return this.drive.move(sourceLocation, targetLocation);
+  }
+
+  postMove(file, response) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.get(providerId, response.properties.id)
@@ -98,18 +87,26 @@ export default class GoogleDrive {
             index.name = response.properties.name;
             return this.cloudIndex.addOrUpdate(providerId, response.properties.id, index);
           });
-      });
+      }).toPromise();
   }
 
-  _postUploadRemove(file, response) {
+  remove(location) {
+    return this.drive.remove(location);
+  }
+
+  postRemove(file, response) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.remove(providerId, response.properties.id);
       });
   }
 
-  getProvider() {
-    return this.drive;
+  createFolder(location) {
+    return this.drive.createFolder(location);
+  }
+
+  postCreateFolder(file, response) {
+    return this.postUpload(file, response);
   }
 
   pullChanges() {
@@ -124,14 +121,16 @@ export default class GoogleDrive {
             return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
               .flatMap(pull => {
                 pageToken = pull.startPageToken;
+                /*
+                 * changes.reverse()
+                 * do newest change last, important to handle new directories correctly
+                 */
                 return Bacon.fromArray(pull.changes.reverse())
-                  // changes.reverse(): do newest change last, important to handle new directories correctly
                   .flatMap(change => {
-                    log.trace('pulling changes: found change %s', change);
-                    return this._detectDownloadChange(change)
+                    return this._detectChangeAction(change)
                       .flatMap(file => {
-                        log.error('a');
-                        file.isDir = this._isDir(change.mimeType), // required by sync manager
+                        file.isDir = this._isDir(change.mimeType),
+
                           file.payload = {
                             id: change.id,
                             name: change.name,
@@ -140,13 +139,13 @@ export default class GoogleDrive {
                             md5Checksum: change.md5Checksum
                           }
                         return file;
+
                       })
                       .flatMap(file => {
-                        log.error('b');
                         if (file.action == 'REMOVE') {
-                          return this._removeChangeFromIndex(file).flatMap(() => file);
+                          return this._removeFromIndex(file).flatMap(() => file);
                         } else {
-                          return this._addChangeToIndex(file).flatMap(() => file);
+                          return this._addToIndex(file).flatMap(() => file);
                         }
                       });
                   });
@@ -165,21 +164,19 @@ export default class GoogleDrive {
       .toPromise();
   }
 
-  doDownload(file, stream) {
-    log.debug('Downloading %s / %s', file.action, file.payload.id);
-  }
-
-  // TODO: bug: bean:app Moving /omelettes/bean/hi/Kopie von Untitled 2.pgn to /1.pgn +0ms
-  // TODO: bug: Moving '/bb533dodddddddddsaSdddddsdddd' to '/bb533dodddddddddsaSdddddsdddd' +0ms
-
-  _detectDownloadChange(file) {
+  _detectChangeAction(file) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.get(providerId, file.id)
           .flatMap(index => {
-            log.trace('_detectDownloadChange for %s with index %s', file, index);
-            if (!index) { // add
-              return this._composeNodesWithIndex(providerId, file.parentId)
+            log.trace('Detecting action of pulled change. Comparing with index.' +
+              'CHANGE: %s \nINDEX: %s', file, index);
+
+            if (!index) {
+              /*
+               * This change is not yet indexed. It is an ADD change.
+               */
+              return this._getFileNodes(providerId, file.parentId)
                 .flatMap(parentNodes => {
                   file.action = 'ADD';
                   parentNodes.push(file.name);
@@ -187,17 +184,22 @@ export default class GoogleDrive {
                   return file;
                 });
             } else {
-              return this._composeNodesWithIndex(providerId, file.id)
+              return this._getFileNodes(providerId, file.id)
                 .flatMap(nodes => {
                   let pathOrigin = this._nodesToPath(nodes);
-
                   if (file.action == 'REMOVE') { // remove
+                    /*
+                     * This change is a REMOVE change.
+                     */
                     file.path = pathOrigin;
                     log.info('Remove with composed path: %s', pathOrigin);
                     return file;
 
-                  } else if (index.parentId != file.parentId) { // move
-                    return this._composeNodesWithIndex(providerId, file.parentId)
+                  } else if (index.parentId != file.parentId) {
+                    /*
+                     * MOVE change. The file/ directory got a new parent.
+                     */
+                    return this._getFileNodes(providerId, file.parentId)
                       .flatMap(parentNodes => {
                         file.action = 'MOVE';
                         file.pathOrigin = pathOrigin;
@@ -206,21 +208,30 @@ export default class GoogleDrive {
                         return file;
                       });
 
-                  } else if (index.name != file.name) { // rename
+                  } else if (index.name != file.name) {
+                    /*
+                     * MOVE change. The file/ directory was renamed
+                     */
                     file.action = 'MOVE';
                     file.pathOrigin = pathOrigin;
                     file.path = this._nodesToPath(nodes.slice(0, nodes.length - 1)) + '/' + file.name;
                     return file;
 
-                  } else if (!this._isDir(file.mimeType)) { // change
+                  } else if (!this._isDir(file.mimeType)) {
+                    /*
+                     * CHANGE change. New content.a
+                     */
                     file.action = 'CHANGE';
                     file.path = pathOrigin;
                     return file;
+
                   } else {
                     log.debug('Ignoring change %s', file.id, file.name);
-                    // change is not relevant because
-                    // - change was uploaded from this client
-                    // - a parent directory is listed as changed if a child changes
+                    /*
+                     * This change is not relevant because:
+                     * - it was uploaded by this client or
+                     * - the parent directory of this change is listed as a changes which is not relevant.
+                     */
                   }
                 }).filter(set => set);
             }
@@ -228,8 +239,7 @@ export default class GoogleDrive {
       });
   }
 
-  _composeNodesWithIndex(providerId, fileId) {
-    log.trace('composing path with index for %s', fileId);
+  _getFileNodes(providerId, fileId) {
     let walkToRoot = (fileId, parents = []) => {
       return this.cloudIndex.get(providerId, fileId)
         .flatMap(index => {
@@ -260,14 +270,14 @@ export default class GoogleDrive {
     return path;
   }
 
-  _removeChangeFromIndex(change) {
+  _removeFromIndex(change) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.remove(providerId, change.id);
       });
   }
 
-  _addChangeToIndex(change) {
+  _addToIndex(change) {
     return Bacon.fromPromise(this.drive.getUserId())
       .flatMap(providerId => {
         return this.cloudIndex.addOrUpdate(providerId, change.id, change.payload);

@@ -92,15 +92,60 @@ export default class SyncManager {
         stream = this._createReadStream(change.path, reject);
       }
       if (change.isDir || stream) {
-        log.info('Uploading %s', change.path);
-        provider.doUpload(change, stream)
-          .then(resolve)
-          .catch(reject);
+        let promise = this._doUpload(provider, change, stream);
+        if (!promise) {
+          reject();
+        } else {
+          promise.then(resolve).catch(reject);
+        }
       } else {
-        log.error('Skipping upload %s wrong data', change.path);
+        log.error('Skipping upload %s wrong data [%s]', change.path, change);
         return null;
       }
     });
+  }
+
+  _doUpload(provider, file, upstream) {
+    let targetPath = file.path.replace(this.watchHome, '/');
+    let promise;
+
+    switch (file.action) {
+      case 'ADD':
+      case 'CHANGE':
+        if (file.isDir) {
+          log.info('[Upload] Creating folder %s', targetPath);
+          promise = provider.createFolder(targetPath);
+        } else {
+          log.info('[Upload] Uploading file %s', targetPath);
+          promise = provider.upload(upstream, targetPath);
+        }
+        //TODO: what if 2 folder created in one request? not handled so far
+        promise = Bacon
+          .fromPromise(promise)
+          .flatMap(done => Bacon.fromPromise(provider.postUpload(file, done)).flatMap(() => done))
+          .toPromise();
+        break;
+      case 'MOVE':
+        let fromPath = file.pathOrigin.replace(this.watchHome, '');
+
+        log.info('[Upload] Moving %s to %s', fromPath, targetPath);
+        promise = Bacon
+          .fromPromise(provider.move(fromPath, targetPath))
+          .flatMap(done => Bacon.fromPromise(provider.postMove(file, done)).flatMap(() => done))
+          .toPromise();
+        break;
+      case 'REMOVE':
+
+        log.info('[Upload] Removing %s', targetPath);
+        promise = Bacon
+          .fromPromise(provider.remove(targetPath))
+          .flatMap(done => Bacon.fromPromise(provider.postRemove(file, done)).flatMap(() => done))
+          .toPromise();
+        break;
+      default:
+        log.error('Upload impossible. Unknown change type %s [%s]', file.action, file);
+    }
+    return promise;
   }
 
   async nextDownload(file) {
@@ -110,35 +155,22 @@ export default class SyncManager {
       let pathPrefixed = this._prefixWithWatchHome(file.path);
 
       if (file.action == 'MOVE' && file.pathOrigin) {
-        log.info('Moving %s to %s', file.pathOrigin, pathPrefixed);
+        log.info('[Download] Moving %s to %s', file.pathOrigin, pathPrefixed);
         let pathFrom = this._prefixWithWatchHome(file.pathOrigin);
         promise = this._fileWorker.move(pathFrom, pathPrefixed);
 
       } else if (file.action == 'REMOVE') {
-        log.info('Removing %s', pathPrefixed);
+        log.info('[Download] Removing %s', pathPrefixed);
         promise = this._fileWorker.remove(pathPrefixed);
 
       } else if (file.action == 'ADD' && file.isDir) {
-        log.info('Adding directory %s', pathPrefixed);
+        log.info('[Download] Adding directory %s', pathPrefixed);
         promise = this._fileWorker.createDirectory(pathPrefixed);
 
-      } else if (file.action == 'ADD' || file.action == 'CHANGE') {
-        log.info('Adding or updating file %s', pathPrefixed);
-        let provider = await this._getProviderById(file.provider);
+      } else if (file.action == 'ADD' || file.action == 'CHANGE' && file.provider) {
+        log.info('[Download] Adding or updating file %s', pathPrefixed);
+        promise = this._doDownload(file, pathPrefixed);
 
-        promise = new Promise((resolve, reject) => {
-          let writeStream = this._createWriteStream(pathPrefixed, reject);
-          let done = provider.doDownload(file, writeStream);
-          if (!done) {
-            this.finishDownload(pathPrefixed).then(resolve).catch(reject);
-          } else {
-            done
-              .then(downloaded => {
-                this.finishDownload(pathPrefixed).then(resolve).catch(reject);
-              })
-              .catch(reject);
-          }
-        });
       } else {
         log.error('Invalid data %s', file);
       }
@@ -148,8 +180,19 @@ export default class SyncManager {
     return promise;
   }
 
+  async _doDownload(file, location) {
+    let provider = await this._getProviderById(file.provider);
 
-  finishDownload(target) {
+    return new Promise((resolve, reject) => {
+      let writeStream = this._createWriteStream(location, reject);
+      Bacon.fromPromise(provider.download(writeStream, file))
+        .flatMap(done => Bacon.fromPromise(provider.postDownload(file, done)).flatMap(() => done))
+        .flatMap(done => Bacon.fromPromise(this._finishDownload(location)).flatMap(() => done))
+        .toPromise().then(resolve).catch(reject);
+      });
+  }
+
+  _finishDownload(target) {
     let source = target + DOWNLOAD_SUFFIX;
     return this._fileWorker.move(source, target);
   }
@@ -157,16 +200,21 @@ export default class SyncManager {
   _fetchChanges() {
     let fetch = Bacon.fromArray(this.providers)
       .flatMap(provider => {
-        return Bacon.fromPromise(provider.getProvider().getUserId())
+        return Bacon.fromPromise(provider.accountId())
           .flatMap(providerId => {
+
             return Bacon.fromPromise(provider.pullChanges())
-              .doAction(changes => log.debug('provider %s fetched %s changes', providerId, changes.length))
+              .doAction(changes => log.info('Provider %s fetched %s changes', provider.providerName(), changes.length))
               .flatMap(changes => Bacon.fromArray(changes))
               .flatMap(change => {
+                /*
+                 * Store provider in field 'provider'
+                 * so that download process can identify corresponding provider.
+                 */
                 change.provider = providerId;
                 this._downloadQueue.push(change);
               })
-          })
+          });
       });
 
     fetch.onError(err => log.error('Error occurred in fetching for changes', err));
@@ -177,7 +225,7 @@ export default class SyncManager {
 
   _startFetchInterval() {
     // TODO: check internet connectivity before calling providers
-    
+
     let working = false;
     this._fetchInterval = setInterval(() => {
       if (!working) {
@@ -193,14 +241,6 @@ export default class SyncManager {
     clearInterval(this._fetchInterval);
   }
 
-  _getProvider() {
-    // challenges for distribution strategy
-    // how to handle new folder change events among providers?
-    // - track which provider stores what file?
-    // how to make sure to delete all files within a folder remove
-    return this.providers.length ? this.providers[0] : null;
-  }
-
   _createReadStream(location, error) {
     let stream = fs.createReadStream(location);
     stream.on('error', error);
@@ -214,7 +254,7 @@ export default class SyncManager {
   }
 
   _createWriteStream(location, error) {
-    let stream = fs.createWriteStream(location + DOWNLOAD_SUFFIX); //TODO: suffix?
+    let stream = fs.createWriteStream(location + DOWNLOAD_SUFFIX);
     stream.on('error', error);
 
     if (this.useEncryption) {
@@ -233,7 +273,7 @@ export default class SyncManager {
     } else {
       return Bacon.fromArray(this.providers)
         .flatMap(provider => {
-          return Bacon.fromPromise(provider.getProvider().getUserId())
+          return Bacon.fromPromise(provider.accountId())
             .flatMap(providerId => {
               this._providerMap.set(providerId, provider);
               if (providerId == id) {
@@ -251,11 +291,20 @@ export default class SyncManager {
      * In order to combine watchHome with location,
      * 1 directory of watchHome must be removed.
      */
+
     if (location.startsWith('/')) {
       location = location.substr(1);
     }
     let endIndex = this.watchHome.lastIndexOf('/', this.watchHome.length - 1);
     let basepath = this.watchHome.substr(0, endIndex);
     return `${basepath}/${location}`;
+  }
+
+  _getProvider() {
+    // challenges for distribution strategy
+    // how to handle new folder change events among providers?
+    // - track which provider stores what file?
+    // how to make sure to delete all files within a folder remove
+    return this.providers.length ? this.providers[0] : null;
   }
 }
