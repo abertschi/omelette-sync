@@ -153,7 +153,6 @@ export default class SyncManager {
 
     if (file.path) {
       let pathPrefixed = this._prefixWithWatchHome(file.path);
-
       if (file.action == 'MOVE' && file.pathOrigin) {
         log.info('[Download] Moving %s to %s', file.pathOrigin, pathPrefixed);
         let pathFrom = this._prefixWithWatchHome(file.pathOrigin);
