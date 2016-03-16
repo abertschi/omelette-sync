@@ -1,23 +1,30 @@
 class StorageProvider {
 
-  getProviderId() {
-    return 'id to identify provider';
-  }
+  accountId() {}
 
-  postUpload(request, response) {
-  }
+  providerName() {}
 
-  postDownload(request, response) {
-  }
+  providerImpl() {}
 
-  postMove(request, response) {
-  }
+  upload(stream, location) {}
 
-  postRemove(request, response) {
-  }
+  postUpload(file, response) {}
 
-  postCreateFolder(request, response) {
-  }
+  download (stream, location){}
+
+  postDownload(file, response) {}
+
+  move(sourceLocation, targetLocation) {}
+
+  postMove(file, response) {}
+
+  remove(location);
+
+  postRemove(file, response) {}
+
+  createFolder(location) {}
+
+  postCreateFolder(file, response) {}
 
 };
 
