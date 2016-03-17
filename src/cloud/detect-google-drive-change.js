@@ -78,7 +78,7 @@ function prepareChangeType(providerId, file) {
   return _getFileNodes(providerId, file.id)
     .flatMap(nodes => {
       file.action = 'CHANGE';
-      file.pathOrigin = _nodesToPath(nodes);
+      file.path = _nodesToPath(nodes);
       return file;
     });
 }

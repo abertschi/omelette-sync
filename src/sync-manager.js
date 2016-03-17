@@ -78,9 +78,9 @@ export default class SyncManager {
   }
 
   pushUpload(change) {
-
+    log.info(change);
     if (change && change.path && !change.path.endsWith(DOWNLOAD_SUFFIX)) {
-      if (change.pathOrigin && change.pathOrigin != change.path + DOWNLOAD_SUFFIX) {
+      if (!change.pathOrigin || change.pathOrigin && !change.pathOrigin.endsWith(DOWNLOAD_SUFFIX)) {
         this._uploadQueue.push(change);
       }
     }
@@ -112,6 +112,7 @@ export default class SyncManager {
     let targetPath = file.path.replace(this.watchHome, '/');
     let promise;
 
+    log.info('Uploading %s %s', file.action, file.path);
     switch (file.action) {
       case 'ADD':
       case 'CHANGE':
@@ -165,6 +166,8 @@ export default class SyncManager {
     // expiration of upload identifier?
     // utility to mark a changes as covered
 
+    log.trace(file);
+
     if (file.path) {
       let pathPrefixed = this._prefixWithWatchHome(file.path);
       if (file.action == 'MOVE' && file.pathOrigin) {
@@ -180,15 +183,15 @@ export default class SyncManager {
         log.info('[Download] Adding directory %s', pathPrefixed);
         promise = this._fileWorker.createDirectory(pathPrefixed);
 
-      } else if (file.action == 'ADD' || file.action == 'CHANGE' && file.provider) {
+      } else if ((file.action == 'ADD' || file.action == 'CHANGE') && file.provider) {
         log.info('[Download] Adding or updating file %s', pathPrefixed);
         promise = this._doDownload(file, pathPrefixed);
 
       } else {
-        log.error('Invalid data %s', file);
+        log.info('Invalid data %s', file);
       }
     } else {
-      log.error('Invalid data %s', file);
+      log.info('Invalid data %s', file);
     }
     return promise;
   }
@@ -197,17 +200,19 @@ export default class SyncManager {
     let provider = await this._getProviderById(file.provider);
 
     return new Promise((resolve, reject) => {
-      let writeStream = this._createWriteStream(location, reject);
-      Bacon.fromPromise(provider.download(writeStream, file))
-        .flatMap(done => Bacon.fromPromise(provider.postDownload(file, done)).flatMap(() => done))
-        .flatMap(done => Bacon.fromPromise(this._finishDownload(location)).flatMap(() => done))
+      Bacon.fromPromise(this._createWriteStream(location, reject))
+        .flatMap(download => {
+          log.info('Downloading ', download);
+          return Bacon.fromPromise(provider.download(download.stream, file))
+            .flatMap(done => Bacon.fromPromise(provider.postDownload(file, done)).flatMap(() => done))
+            .flatMap(done => Bacon.fromPromise(this._finishDownload(download.location)).flatMap(() => done))
+        })
         .toPromise().then(resolve).catch(reject);
     });
   }
 
   _finishDownload(target) {
-    let source = target + DOWNLOAD_SUFFIX;
-    return this._fileWorker.move(source, target);
+    return this._fileWorker.markDownloadAsDone(target);
   }
 
   _fetchChanges() {
@@ -267,16 +272,18 @@ export default class SyncManager {
   }
 
   _createWriteStream(location, error) {
-    let stream = fs.createWriteStream(location + DOWNLOAD_SUFFIX);
-    stream.on('error', error);
-
-    if (this.useEncryption) {
-      let enc = this.encryption.decryptStream(stream);
-      enc.on('error', error);
-      return enc;
-    } else {
-      return stream;
-    }
+    return Bacon.fromPromise(this._fileWorker.createDownloadStream(location, error))
+      .flatMap(download => {
+        log.info('_createWriteStream', download);
+        if (this.useEncryption) {
+          let enc = this.encryption.decryptStream(download.stream);
+          enc.on('error', error);
+          download.stream = enc;
+          return download;
+        } else {
+          return download;
+        }
+      }).toPromise();
   }
 
   async _getProviderById(id) {

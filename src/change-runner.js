@@ -53,6 +53,7 @@ export default class ChangeRunner {
       }
 
       if (change) {
+        log.info('CHANGE RUNNER: ', change);
         let promise = this.callback.apply(this.callbackObject, [change]);
         if (promise) {
           this._markAsDoneIfNoError(promise, change);
