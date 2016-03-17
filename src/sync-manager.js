@@ -78,8 +78,11 @@ export default class SyncManager {
   }
 
   pushUpload(change) {
+
     if (change && change.path && !change.path.endsWith(DOWNLOAD_SUFFIX)) {
-      this._uploadQueue.push(change);
+      if (change.pathOrigin && change.pathOrigin != change.path + DOWNLOAD_SUFFIX) {
+        this._uploadQueue.push(change);
+      }
     }
   }
 
@@ -151,6 +154,17 @@ export default class SyncManager {
   async nextDownload(file) {
     let promise;
 
+    // IDEA: store all changes at a persistent place
+    // only add new change to pushUpload if it is not stored
+    // hash necessary to detect if change was made by download or user
+    // this covers the DOWNLOAD -> not UPLOAD again scenario
+
+    // IDEA: UPLOAD -> not DOWNLOAD again scenario:
+    // upload -> returns any identifier
+    // download: uses upload identifier to determine if change is relevant
+    // expiration of upload identifier?
+    // utility to mark a changes as covered
+
     if (file.path) {
       let pathPrefixed = this._prefixWithWatchHome(file.path);
       if (file.action == 'MOVE' && file.pathOrigin) {
@@ -188,7 +202,7 @@ export default class SyncManager {
         .flatMap(done => Bacon.fromPromise(provider.postDownload(file, done)).flatMap(() => done))
         .flatMap(done => Bacon.fromPromise(this._finishDownload(location)).flatMap(() => done))
         .toPromise().then(resolve).catch(reject);
-      });
+    });
   }
 
   _finishDownload(target) {

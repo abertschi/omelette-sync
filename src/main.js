@@ -31,14 +31,12 @@ getGoogleAuthToken().then(bundle => {
 
   let drive = new GoogleDrive({
     auth: bundle.auth,
-    mountDir: '/omelettes/',
-    watchHome: WATCH_HOMEDIR
+    mountDir: '/omelettes/'
   });
 
   let manager = new SyncManager({
     providers: [drive],
     watchHome: WATCH_HOMEDIR,
-
   });
   manager.start();
 
