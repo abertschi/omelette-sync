@@ -5,6 +5,7 @@ import Encryption from './encryption.js';
 import fs from 'fs';
 import ChangeRunner from './change-runner.js';
 import FileWorker from './file-worker.js';
+const EventEmitter = require('events');
 
 let log = require('./debug.js')('syncmanager');
 
@@ -13,9 +14,10 @@ const DOWNLOAD_CONCURRENCY_LIMIT = 1;
 const DOWNLOAD_SUFFIX = '.syncdownload';
 const ENCRYPTION_SUFFIX = '.enc';
 
-export default class SyncManager {
+export default class SyncManager extends EventEmitter {
 
   constructor(options = {}) {
+    super();
     this.providers = options.providers || [];
     this.fetchIntervalTime = options.fetchInterval || 10000;
     this.uploadStrategy = options.uploadStrategy || 'first-full'; /// 'distribute'
@@ -264,7 +266,7 @@ export default class SyncManager {
     stream.on('error', error);
 
     if (this.useEncryption) {
-      return this.encryption.encryptStream(stream)
+      return this.encryption.encryptStream(stream, error)
         .on('error', error);
     } else {
       return stream;
@@ -274,9 +276,8 @@ export default class SyncManager {
   _createWriteStream(location, error) {
     return Bacon.fromPromise(this._fileWorker.createDownloadStream(location, error))
       .flatMap(download => {
-        log.info('_createWriteStream', download);
         if (this.useEncryption) {
-          let enc = this.encryption.decryptStream(download.stream);
+          let enc = this.encryption.decryptStream(download.stream, error);
           enc.on('error', error);
           download.stream = enc;
           return download;

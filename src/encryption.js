@@ -23,27 +23,25 @@
         decypt.update(text, 'utf8', 'base64');
         return decypt.final('base64')
       }
-
-
       // manually with openssl: openssl enc -in bean.txt -d -aes-256-cbc -out bean.done.txt -nosalt
-      encryptStream(stream) {
+      encryptStream(stream, errorHandler) {
         let encrypt = crypto.createCipher(this.algorithm, this.password);
-        return stream.on('error', error => {
+        return stream.on('error', err => {
+          if (errorHandler) errorHandler(err);
           log.error(error, error.stack);
-          throw error;
         }).pipe(encrypt).on('error', error => {
+          if (errorHandler) errorHandler(error);
           log.error(error, error.stack);
-          throw error;
         });
       }
 
-      decryptStream(stream) {
+      decryptStream(stream, errorHandler) {
         return stream.on('error', err => {
           log.error(err);
-          throw error;
+          if (errorHandler) errorHandler(err);
         }).pipe(this.decrypt).on('error', err => {
           log.error(err);
-          throw err;
+          if (errorHandler) errorHandler(err);
         });
       }
     }
