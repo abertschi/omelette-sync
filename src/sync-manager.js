@@ -129,6 +129,11 @@ export default class SyncManager extends EventEmitter {
       }).toPromise();
   }
 
+  _addDownloadToHistory(file) {
+    let key = this._createHistoryKey(file.action, file.path);
+    this._downloadHistory.set(key, file);
+  }
+
   async nextUpload(change) {
     log.info('next upload', change.path);
     return new Promise((resolve, reject) => {
@@ -202,32 +207,8 @@ export default class SyncManager extends EventEmitter {
   async nextDownload(file) {
     let promise;
 
-    // IDEA: store all changes at a persistent place
-    // only add new change to pushUpload if it is not stored
-    // hash necessary to detect if change was made by download or user
-    // this covers the DOWNLOAD -> not UPLOAD again scenario
-
-    // IDEA: UPLOAD -> not DOWNLOAD again scenario:
-    // upload -> returns any identifier
-    // download: uses upload identifier to determine if change is relevant
-    // expiration of upload identifier?
-    // utility to mark a changes as covered
-
-    // store: CHANGE /path/to/file
-
-    // add change to download histoy
-
-    let key = file.action;
-    if (key == 'CHANGE') {
-      key = 'ADD';
-    }
-    key = key + file.path;
-    this._downloadHistory.set(key, file);
-    log.info('Set DownloadHistory: %s', key);
-
-    log.trace(file);
-
     if (file.path) {
+      this._addDownloadToHistory(file);
       let pathPrefixed = this._prefixWithWatchHome(file.path);
       if (file.action == 'MOVE' && file.pathOrigin) {
         log.info('[Download] Moving %s to %s', file.pathOrigin, pathPrefixed);
@@ -263,14 +244,28 @@ export default class SyncManager extends EventEmitter {
         .flatMap(download => {
           return Bacon.fromPromise(provider.download(download.stream, file))
             .flatMap(done => Bacon.fromPromise(provider.postDownload(file, done)).flatMap(() => done))
-            .flatMap(done => Bacon.fromPromise(this._finishDownload(download.location)).flatMap(() => done))
+            .flatMap(done => Bacon.fromPromise(this._finishDownload(download.location, file.timestamp)).flatMap(() => done))
         })
         .toPromise().then(resolve).catch(reject);
     });
   }
 
-  _finishDownload(target) {
-    return this._fileWorker.markDownloadAsDone(target);
+  _finishDownload(location, timestamp) {
+    log.info(location, timestamp);
+    return this._fileWorker.markDownloadAsDone(location, timestamp);
+  }
+
+  _filterPullChange(file, uploads) {
+    let key = this._createHistoryKey(file.action, file.path);
+    let found = false;
+    for (let i = 0; i < uploads.length; i++) {
+      let element = uploads[i];
+      if (key == element.key) {
+        found = true;
+        break;
+      }
+    }
+    return !found;
   }
 
   _fetchChanges() {
@@ -279,43 +274,17 @@ export default class SyncManager extends EventEmitter {
         return Bacon.fromPromise(provider.accountId())
           .flatMap(providerId => {
 
-            let providerUploads = this._uploadHistory.get(providerId);
-            if (!providerUploads) providerUploads = [];
-            log.info('providerUploads: ', providerUploads);
+            let uploads = this._uploadHistory.get(providerId) || [];
             this._uploadHistory.set(providerId, []);
 
             return Bacon.fromPromise(provider.pullChanges())
               .doAction(changes => log.info('Provider %s fetched %s changes', provider.providerName(), changes.length))
               .flatMap(changes => {
-                log.info('changes: ', changes);
                 return Bacon.fromArray(changes)
-                  .filter(change => {
-                    log.info('filtering %s', change);
-                    let key = this._createHistoryKey(change.action, change.path);
-                    log.debug('creating key: ', key);
-                    let found = false;
-                    let foundIndex = 0;
-                    for (let i = 0; i < providerUploads.length; i++) {
-                      let element = providerUploads[i];
-                      log.debug('Checking pullChange key %s with upload key %s', key, element.key);
-                      if (key == element.key) {
-                        log.info('Found upload, ignoring: ', element);
-                        found = true;
-                        // foundIndex = i;
-                        break;
-                      }
-                    }
-                    // if (found) {
-                    //   providerUploads.splice(foundIndex, 1);
-                    // }
-                    return !found;
-                  })
+                  .filter(change => this._filterPullChange(change, uploads))
                   .fold([], (array, change) => {
                     array.push(change);
                     return array;
-                  })
-                  .doAction(changes => {
-                    //this._uploadHistory.set(providerId, this._uploadHistory.get(providerId).concat(providerUploads));
                   });
               })
               .flatMap(changes => Bacon.fromArray(changes))
