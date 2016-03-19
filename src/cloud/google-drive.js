@@ -84,7 +84,6 @@ export default class GoogleDrive {
 
   remove(location) {
     return this.drive.remove(location);
-    return promise;
   }
 
   postRemove(file, response) {
@@ -145,7 +144,6 @@ export default class GoogleDrive {
         Settings.set(pageTokenKey, pageToken)
         return changes;
       })
-      .endOnError()
       .toPromise();
   }
 
