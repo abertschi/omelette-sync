@@ -238,11 +238,17 @@ export default class GoogleDriveApi extends StorageApi {
   upload(source, targetPath) {
     let dirname = path.dirname(targetPath);
     let basename = path.basename(targetPath);
+    log.debug('Searching for existing resources with basename %s', basename);
 
     return Bacon.fromPromise(this.createFolder(dirname))
       .flatMap(folders => {
-        return Bacon.fromPromise(this.search(basename))
+        log.debug('folder created', folders);
+        let searchArgs = {
+          withParentId: folders.properties.id
+        };
+        return Bacon.fromPromise(this.search(basename, searchArgs))
           .flatMap(search => {
+            log.debug('search result', search);
             if (search && search.files && search.files.length) {
               let fileId = search.files[0].id;
               return this.uploadExisting(source, fileId);
@@ -363,6 +369,7 @@ export default class GoogleDriveApi extends StorageApi {
   }
 
   uploadExisting(source, fileId) {
+    log.debug('Overwriting existing resource with id %s', fileId);
     return this._createReadStream(source)
       .flatMap(body => {
         return {
@@ -394,6 +401,7 @@ export default class GoogleDriveApi extends StorageApi {
   }
 
   uploadWithParentId(source, name, parentId) {
+    log.debug('Uploading new resource with name %s', name);
     return this._createReadStream(source)
       .flatMap(body => {
         return {
