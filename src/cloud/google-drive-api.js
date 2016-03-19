@@ -176,7 +176,8 @@ export default class GoogleDriveApi extends StorageApi {
               name: file ? file.name : null,
               parentId: parentId,
               md5Checksum: file ? file.md5Checksum : null,
-              mimeType: file ? file.mimeType : null
+              mimeType: file ? file.mimeType : null,
+              timestamp: new Date(change.time).getTime()
             }
           }).fold([], (array, element) => {
             array.push(element);

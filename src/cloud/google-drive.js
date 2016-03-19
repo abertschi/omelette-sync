@@ -91,7 +91,7 @@ export default class GoogleDrive {
     // remove with pullchanges
     // since all changes done by upload will be available in pullChanges
     //return this._removeFromIndex(response.properties.id).toPromise();
-    return Promise.resolve(); 
+    return Promise.resolve();
   }
 
   createFolder(location) {
@@ -150,14 +150,17 @@ export default class GoogleDrive {
   }
 
   _buildChange(response, file) {
-    file.isDir = this._isDir(response.mimeType),
+    file.isDir = this._isDir(response.mimeType);
+    file.timestamp = response.timestamp;
       file.payload = {
         id: response.id,
         name: response.name,
         parentId: response.parentId,
         isDir: response.isDir,
-        md5Checksum: response.md5Checksum
-      }
+        md5Checksum: response.md5Checksum,
+        timestamp: response.timestamp
+      };
+      log.debug('Building change to download: %s', file);
     return file;
   }
 
