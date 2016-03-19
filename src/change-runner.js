@@ -7,8 +7,6 @@ import fs from 'fs';
 import Providers from './cloud/providers.js';
 let util = require('util');
 
-const KEEP_ALIVE_FREQUENCY = 100;
-
 export default class ChangeRunner {
 
   constructor(options = {}) {
@@ -16,7 +14,7 @@ export default class ChangeRunner {
     this.callback = options.callback;
     this.callbackObject = options.callbackObject;
     this.concurrencyLimit = options.concurrencyLimit || 1;
-    this.checkFrequency = options.checkFrequency || KEEP_ALIVE_FREQUENCY;
+    this.checkFrequency = options.checkFrequency || 100;
     this._pendingChanges = [];
     this._running = false;
     this._started = false;
@@ -104,7 +102,7 @@ export default class ChangeRunner {
         setTimeout(function() {
           that._run();
           that._keepalive();
-        }, KEEP_ALIVE_FREQUENCY);
+        }, that.checkFrequency);
       });
     }
   }

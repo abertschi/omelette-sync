@@ -75,6 +75,7 @@ process.on('SIGINT', function() {
 
 process.on('unhandledRejection', function(error, promise) {
   log.error("UNHANDLED REJECTION".red, error, error.stack);
+  throw error;
 });
 
 

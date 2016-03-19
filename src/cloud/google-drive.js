@@ -39,12 +39,13 @@ export default class GoogleDrive {
   }
 
   postUpload(file, response) {
-    log.trace('Post Upload with: %s', response);
+    log.info('postupload: ', response);
     return Bacon.fromArray(this._flattenTreeToArray(response.properties.tree))
       .flatMap(folder => {
         let payload = {
           name: folder.name,
-          parentId: folder.parentId
+          parentId: folder.parentId,
+          md5Checksum: response.properties.md5Checksum
         };
         return this._addToIndex(folder.id, payload);
       })
@@ -80,10 +81,11 @@ export default class GoogleDrive {
 
   remove(location) {
     return this.drive.remove(location);
+    return promise;
   }
 
   postRemove(file, response) {
-    return this._removeFromIndex(response.properties.id);
+    return this._removeFromIndex(response.properties.id).toPromise();
   }
 
   createFolder(location) {
@@ -141,7 +143,6 @@ export default class GoogleDrive {
   }
 
   _buildChange(response, file) {
-    log.info(file);
     file.isDir = this._isDir(response.mimeType),
       file.payload = {
         id: response.id,

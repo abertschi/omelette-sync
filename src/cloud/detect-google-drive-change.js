@@ -16,13 +16,13 @@ export default function detectChange(file, providerId) {
         if (file.action == 'REMOVE') return prepareRemoveType(providerId, file);
         else if (index.parentId != file.parentId) return prepareMoveType(providerId, file);
         else if (index.name != file.name) return prepareRenameType(providerId, file);
-        else if (!_isDir(file.mimeType)) return prepareChangeType(providerId, file);
+        else if (!_isDir(file.mimeType) && file.md5Checksum != index.md5Checksum) return prepareChangeType(providerId, file);
         else {
           log.debug('Ignoring change %s', file.id, file.name);
           /*
            * This change is not relevant because:
            * - it was uploaded by this client or
-           * - the parent directory of this change is listed as a change which is not relevant.
+           * - the parent directory of this change is listed as a change.
            */
         }
       }

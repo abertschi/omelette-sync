@@ -51,6 +51,10 @@ export default class SyncManager extends EventEmitter {
     if (!this.watchHome) {
       throw new Error('No watch home dir');
     }
+
+
+    this._uploadHistory = new Map();
+    this._downloadHistory = new Map();
   }
 
   start() {
@@ -59,7 +63,8 @@ export default class SyncManager extends EventEmitter {
         queue: this._uploadQueue,
         callback: this.nextUpload,
         callbackObject: this,
-        concurrencyLimit: 1
+        concurrencyLimit: 1,
+        checkFrequency: 300
       });
       this._downloadRunner = new ChangeRunner({
         queue: this._downloadQueue,
@@ -80,7 +85,6 @@ export default class SyncManager extends EventEmitter {
   }
 
   pushUpload(change) {
-    log.info(change);
     if (change && change.path && !change.path.endsWith(DOWNLOAD_SUFFIX)) {
       if (!change.pathOrigin || change.pathOrigin && !change.pathOrigin.endsWith(DOWNLOAD_SUFFIX)) {
         this._uploadQueue.push(change);
@@ -89,14 +93,26 @@ export default class SyncManager extends EventEmitter {
   }
 
   async nextUpload(change) {
+    log.info('next upload', change.path);
     return new Promise((resolve, reject) => {
       let provider = this._getProvider();
       let stream = null;
 
-      if (!change.isDir) {
+      let key = change.action;
+      if (key == 'CHANGE') {
+        key = 'ADD';
+      }
+      key = key + this._removeWatchHome(change.path);
+      this._uploadHistory.set(key, change);
+      log.info('Set UploadHistory: %s', key);
+
+      let isRelevant = this._downloadHistory.get(key) == null;
+
+      if (!change.isDir && isRelevant) {
         stream = this._createReadStream(change.path, reject);
       }
-      if (change.isDir || stream) {
+      if ((change.isDir || stream) && isRelevant) {
+        log.info('Not in Download history, can upload: %s', key);
         let promise = this._doUpload(provider, change, stream);
         if (!promise) {
           reject();
@@ -104,8 +120,9 @@ export default class SyncManager extends EventEmitter {
           promise.then(resolve).catch(reject);
         }
       } else {
+        log.info('in download history, ignore: %s', key);
         log.error('Skipping upload %s wrong data [%s]', change.path, change);
-        return null;
+        reject();
       }
     });
   }
@@ -168,6 +185,15 @@ export default class SyncManager extends EventEmitter {
     // expiration of upload identifier?
     // utility to mark a changes as covered
 
+    // store: CHANGE /path/to/file
+    let key = file.action;
+    if (key == 'CHANGE') {
+      key = 'ADD';
+    }
+    key = key + file.path;
+    this._downloadHistory.set(key, file);
+    log.info('Set DownloadHistory: %s', key);
+
     log.trace(file);
 
     if (file.path) {
@@ -204,7 +230,6 @@ export default class SyncManager extends EventEmitter {
     return new Promise((resolve, reject) => {
       Bacon.fromPromise(this._createWriteStream(location, reject))
         .flatMap(download => {
-          log.info('Downloading ', download);
           return Bacon.fromPromise(provider.download(download.stream, file))
             .flatMap(done => Bacon.fromPromise(provider.postDownload(file, done)).flatMap(() => done))
             .flatMap(done => Bacon.fromPromise(this._finishDownload(download.location)).flatMap(() => done))
@@ -232,7 +257,19 @@ export default class SyncManager extends EventEmitter {
                  * so that download process can identify corresponding provider.
                  */
                 change.provider = providerId;
-                this._downloadQueue.push(change);
+
+                let key = change.action;
+                if (key == 'CHANGE') {
+                  key = 'ADD';
+                }
+                key = key + change.path;
+                if (this._uploadHistory.get(key) == null) {
+                  log.info('Not in UPload history, can download: %s', key);
+                  this._downloadQueue.push(change);
+                } else {
+                  log.info('in UPload history, ignore: %s', key);
+                  this._uploadHistory.delete(key)
+                }
               })
           });
       });
@@ -312,13 +349,16 @@ export default class SyncManager extends EventEmitter {
      * In order to combine watchHome with location,
      * 1 directory of watchHome must be removed.
      */
-
     if (location.startsWith('/')) {
       location = location.substr(1);
     }
     let endIndex = this.watchHome.lastIndexOf('/', this.watchHome.length - 1);
     let basepath = this.watchHome.substr(0, endIndex);
     return `${basepath}/${location}`;
+  }
+
+  _removeWatchHome(location) {
+    return location.replace(this.watchHome, '/');
   }
 
   _getProvider() {

@@ -41,6 +41,7 @@ export default class GoogleDriveApi extends StorageApi {
   }
 
   remove(location) {
+    log.info('api remove %s', location)
     return Bacon.fromPromise(this.getFileMetaByPath(location))
       .flatMap(found => {
         return Bacon.fromPromise(this.removeById(found.id))
@@ -54,7 +55,6 @@ export default class GoogleDriveApi extends StorageApi {
           });
       })
       .doAction(() => log.debug(`${location} deleted`))
-      .endOnError()
       .toPromise();
   }
 
@@ -123,7 +123,6 @@ export default class GoogleDriveApi extends StorageApi {
             }).pipe(writeStream);
         })
       })
-      .endOnError()
       .toPromise();
   }
 
@@ -232,7 +231,6 @@ export default class GoogleDriveApi extends StorageApi {
               })
           })
       })
-      .endOnError()
       .doAction(() => log.debug(`Node moved from %s to %s`, fromPath, toPath))
       .toPromise();
   }
@@ -254,6 +252,7 @@ export default class GoogleDriveApi extends StorageApi {
             }
           })
           .flatMap(uploaded => {
+            log.trace(uploaded);
             let tree = folders.properties.tree;
             let child = this._getMostInnerChild(tree);
             child.child = {
@@ -263,6 +262,7 @@ export default class GoogleDriveApi extends StorageApi {
             return {
               properties: {
                 id: uploaded.id,
+                md5Checksum: uploaded.md5Checksum,
                 name: basename,
                 tree: tree
               }
@@ -270,7 +270,6 @@ export default class GoogleDriveApi extends StorageApi {
           });
       })
       .doAction(() => log.debug(`File ${targetPath} uploaded`))
-      .endOnError()
       .toPromise();
   }
 
@@ -301,7 +300,6 @@ export default class GoogleDriveApi extends StorageApi {
           });
       })
       .doAction(() => log.debug('Folder %s created', basedir))
-      .endOnError()
       .toPromise();
   }
 
@@ -373,7 +371,7 @@ export default class GoogleDriveApi extends StorageApi {
           media: {
             body: body,
           },
-          fields: 'id, name, parents'
+          fields: 'id, name, parents, md5Checksum'
         };
       })
       .flatMap(upload => {
@@ -389,7 +387,8 @@ export default class GoogleDriveApi extends StorageApi {
         return {
           id: result.id,
           name: result.name,
-          parentId: result.parents[0]
+          parentId: result.parents[0],
+          md5Checksum: result.md5Checksum
         };
       });
   }
@@ -405,7 +404,7 @@ export default class GoogleDriveApi extends StorageApi {
           media: {
             body: body,
           },
-          fields: 'id'
+          fields: 'id, md5Checksum'
         };
       })
       .flatMap(upload => {
@@ -420,7 +419,8 @@ export default class GoogleDriveApi extends StorageApi {
       .flatMap(result => {
         return {
           id: result.id,
-          name: name
+          name: name,
+          md5Checksum: result.md5Checksum
         };
       });
   }
@@ -724,7 +724,7 @@ export default class GoogleDriveApi extends StorageApi {
       source: function() {
         return eventStream;
       },
-      retries: this.retry,
+      retries: 0, //this.retry,
       isRetryable: function(error) {
         let retryable = isNetworkError(error);
         if (retryable) {
