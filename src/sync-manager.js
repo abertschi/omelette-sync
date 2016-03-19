@@ -52,6 +52,28 @@ export default class SyncManager extends EventEmitter {
       throw new Error('No watch home dir');
     }
 
+    // for each providers
+    // if fetchChanges successful, clear upload history, store for 2 iterations
+
+    // name: 'omelettes',
+    //   parentId: '0AKZ4Y_wAhcFJUk9PVA',
+    //   mimeType: 'application/vnd.google-apps.folder',
+    //   pathOrigin: '/',
+    //   path: '/omelettes',
+    //   isDir: true,
+    //   payload:
+    //    { id: '0B6Z4Y_wAhcFJZFNFTmZtQjRUcmM',
+    //      name: 'omelettes',
+    //      parentId: '0AKZ4Y_wAhcFJUk9PVA',
+    //      isDir: true },
+    //   provider: '16104777645267762260' } { [Error: EINVAL: invalid argument, rename '/Users/abertschi/Dropbox/tmp/' -> '/Users/abertschi/Dropbox/tmp/omelettes']
+    //   errno: -22,
+    //   code: 'EINVAL',
+    //   syscall: 'rename',
+    //   path: '/Users/abertschi/Dropbox/tmp/',
+    //   dest: '/Users/abertschi/Dropbox/tmp/omelettes' } Error: EINVAL: invalid argument, rename '/Users/abertschi/Dropbox/tmp/' -> '/Users/abertschi/Dropbox/tmp/omelettes'
+    //     at Error (native)
+
 
     this._uploadHistory = new Map();
     this._downloadHistory = new Map();
@@ -87,47 +109,52 @@ export default class SyncManager extends EventEmitter {
   pushUpload(change) {
     if (change && change.path && !change.path.endsWith(DOWNLOAD_SUFFIX)) {
       if (!change.pathOrigin || change.pathOrigin && !change.pathOrigin.endsWith(DOWNLOAD_SUFFIX)) {
+
+        // only add if not in download history
         this._uploadQueue.push(change);
       }
     }
+  }
+
+  _addUploadToHistory(provider, file) {
+    return Bacon.fromPromise(provider.accountId())
+      .flatMap(providerId => {
+        let key = this._createHistoryKey(file.action, this._removeWatchHome(file.path));
+        let uploads = this._uploadHistory.get(providerId) || [];
+        uploads.push({
+          key: key,
+          file: file
+        });
+        this._uploadHistory.set(providerId, uploads);
+      }).toPromise();
   }
 
   async nextUpload(change) {
     log.info('next upload', change.path);
     return new Promise((resolve, reject) => {
       let provider = this._getProvider();
-      let stream = null;
-
-      let key = change.action;
-      if (key == 'CHANGE') {
-        key = 'ADD';
-      }
-      key = key + this._removeWatchHome(change.path);
-      this._uploadHistory.set(key, change);
-      log.info('Set UploadHistory: %s', key);
-
+      let key = this._createHistoryKey(change.action, this._removeWatchHome(change.path));
       let isRelevant = this._downloadHistory.get(key) == null;
-
-      if (!change.isDir && isRelevant) {
-        stream = this._createReadStream(change.path, reject);
-      }
-      if ((change.isDir || stream) && isRelevant) {
-        log.info('Not in Download history, can upload: %s', key);
-        let promise = this._doUpload(provider, change, stream);
+      log.debug('Is %s relevant: %s', key, isRelevant);
+      if (isRelevant) {
+        let promise = this._doUpload(provider, change, reject);
         if (!promise) {
           reject();
         } else {
-          promise.then(resolve).catch(reject);
+          promise.then(then => {
+            this._addUploadToHistory(provider, change)
+              .then(() => resolve(then)).catch(reject);
+          }).catch(reject);
         }
       } else {
-        log.info('in download history, ignore: %s', key);
-        log.error('Skipping upload %s wrong data [%s]', change.path, change);
-        reject();
+        log.debug('Ignoring %s for upload', key);
+        this._downloadHistory.delete(key);
+        resolve();
       }
     });
   }
 
-  _doUpload(provider, file, upstream) {
+  _doUpload(provider, file, error) {
     let targetPath = file.path.replace(this.watchHome, '/');
     let promise;
 
@@ -140,6 +167,7 @@ export default class SyncManager extends EventEmitter {
           promise = provider.createFolder(targetPath);
         } else {
           log.info('[Upload] Uploading file %s', targetPath);
+          let upstream = this._createReadStream(file.path, error);
           promise = provider.upload(upstream, targetPath);
         }
         //TODO: what if 2 folder created in one request? not handled so far
@@ -186,6 +214,9 @@ export default class SyncManager extends EventEmitter {
     // utility to mark a changes as covered
 
     // store: CHANGE /path/to/file
+
+    // add change to download histoy
+
     let key = file.action;
     if (key == 'CHANGE') {
       key = 'ADD';
@@ -248,8 +279,45 @@ export default class SyncManager extends EventEmitter {
         return Bacon.fromPromise(provider.accountId())
           .flatMap(providerId => {
 
+            let providerUploads = this._uploadHistory.get(providerId);
+            if (!providerUploads) providerUploads = [];
+            log.info('providerUploads: ', providerUploads);
+            this._uploadHistory.set(providerId, []);
+
             return Bacon.fromPromise(provider.pullChanges())
               .doAction(changes => log.info('Provider %s fetched %s changes', provider.providerName(), changes.length))
+              .flatMap(changes => {
+                log.info('changes: ', changes);
+                return Bacon.fromArray(changes)
+                  .filter(change => {
+                    log.info('filtering %s', change);
+                    let key = this._createHistoryKey(change.action, change.path);
+                    log.debug('creating key: ', key);
+                    let found = false;
+                    let foundIndex = 0;
+                    for (let i = 0; i < providerUploads.length; i++) {
+                      let element = providerUploads[i];
+                      log.debug('Checking pullChange key %s with upload key %s', key, element.key);
+                      if (key == element.key) {
+                        log.info('Found upload, ignoring: ', element);
+                        found = true;
+                        // foundIndex = i;
+                        break;
+                      }
+                    }
+                    // if (found) {
+                    //   providerUploads.splice(foundIndex, 1);
+                    // }
+                    return !found;
+                  })
+                  .fold([], (array, change) => {
+                    array.push(change);
+                    return array;
+                  })
+                  .doAction(changes => {
+                    //this._uploadHistory.set(providerId, this._uploadHistory.get(providerId).concat(providerUploads));
+                  });
+              })
               .flatMap(changes => Bacon.fromArray(changes))
               .flatMap(change => {
                 /*
@@ -257,19 +325,7 @@ export default class SyncManager extends EventEmitter {
                  * so that download process can identify corresponding provider.
                  */
                 change.provider = providerId;
-
-                let key = change.action;
-                if (key == 'CHANGE') {
-                  key = 'ADD';
-                }
-                key = key + change.path;
-                if (this._uploadHistory.get(key) == null) {
-                  log.info('Not in UPload history, can download: %s', key);
-                  this._downloadQueue.push(change);
-                } else {
-                  log.info('in UPload history, ignore: %s', key);
-                  this._uploadHistory.delete(key)
-                }
+                this._downloadQueue.push(change);
               })
           });
       });
@@ -278,6 +334,13 @@ export default class SyncManager extends EventEmitter {
     return new Promise((resolve, reject) => {
       fetch.onEnd(resolve);
     });
+  }
+
+  _createHistoryKey(action, location) {
+    if (action == 'CHANGE') {
+      action = 'ADD';
+    }
+    return action = action + location;
   }
 
   _startFetchInterval() {

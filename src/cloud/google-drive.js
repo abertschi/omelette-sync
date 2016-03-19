@@ -72,6 +72,9 @@ export default class GoogleDrive {
       .flatMap(providerId => {
         return this.cloudIndex.get(providerId, response.properties.id)
           .flatMap(index => {
+            if (!index) {
+              index = {};
+            }
             index.parentId = response.properties.parentId;
             index.name = response.properties.name;
             return this.cloudIndex.addOrUpdate(providerId, response.properties.id, index);
@@ -85,7 +88,10 @@ export default class GoogleDrive {
   }
 
   postRemove(file, response) {
-    return this._removeFromIndex(response.properties.id).toPromise();
+    // remove with pullchanges
+    // since all changes done by upload will be available in pullChanges
+    //return this._removeFromIndex(response.properties.id).toPromise();
+    return Promise.resolve(); 
   }
 
   createFolder(location) {
@@ -109,6 +115,7 @@ export default class GoogleDrive {
               .flatMap(providerId => {
                 return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
                   .flatMap(pull => {
+                    log.trace(pull);
                     pageToken = pull.startPageToken;
                     /*
                      * changes.reverse()

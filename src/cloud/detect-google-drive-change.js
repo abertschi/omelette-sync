@@ -11,9 +11,9 @@ export default function detectChange(file, providerId) {
     .doAction(index => log.trace('Determing change type. CHANGE: %s \nINDEX: %s', file, index))
     .flatMap(index => {
 
-      if (!index) return prepareAddType(providerId, file);
+      if (file.action == 'REMOVE') return prepareRemoveType(providerId, file);
       else {
-        if (file.action == 'REMOVE') return prepareRemoveType(providerId, file);
+        if (!index) return prepareAddType(providerId, file);
         else if (index.parentId != file.parentId) return prepareMoveType(providerId, file);
         else if (index.name != file.name) return prepareRenameType(providerId, file);
         else if (!_isDir(file.mimeType) && file.md5Checksum != index.md5Checksum) return prepareChangeType(providerId, file);
@@ -69,7 +69,7 @@ function prepareRenameType(providerId, file) {
     .flatMap(nodes => {
       file.action = 'MOVE';
       file.pathOrigin = _nodesToPath(nodes);
-      file.path = _nodesToPath(nodes.slice(0, nodes.length - 1)) + '/' + file.name;
+      file.path = _nodesToPath(nodes.slice(0, nodes.length - 1)) + file.name;
       return file;
     });
 }
