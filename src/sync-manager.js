@@ -5,6 +5,7 @@ import Encryption from './encryption.js';
 import fs from 'fs';
 import ChangeRunner from './change-runner.js';
 import FileWorker from './file-worker.js';
+import Settings from './settings.js';
 const EventEmitter = require('events');
 
 let log = require('./debug.js')('syncmanager');
@@ -52,31 +53,9 @@ export default class SyncManager extends EventEmitter {
       throw new Error('No watch home dir');
     }
 
-    // for each providers
-    // if fetchChanges successful, clear upload history, store for 2 iterations
-
-    // name: 'omelettes',
-    //   parentId: '0AKZ4Y_wAhcFJUk9PVA',
-    //   mimeType: 'application/vnd.google-apps.folder',
-    //   pathOrigin: '/',
-    //   path: '/omelettes',
-    //   isDir: true,
-    //   payload:
-    //    { id: '0B6Z4Y_wAhcFJZFNFTmZtQjRUcmM',
-    //      name: 'omelettes',
-    //      parentId: '0AKZ4Y_wAhcFJUk9PVA',
-    //      isDir: true },
-    //   provider: '16104777645267762260' } { [Error: EINVAL: invalid argument, rename '/Users/abertschi/Dropbox/tmp/' -> '/Users/abertschi/Dropbox/tmp/omelettes']
-    //   errno: -22,
-    //   code: 'EINVAL',
-    //   syscall: 'rename',
-    //   path: '/Users/abertschi/Dropbox/tmp/',
-    //   dest: '/Users/abertschi/Dropbox/tmp/omelettes' } Error: EINVAL: invalid argument, rename '/Users/abertschi/Dropbox/tmp/' -> '/Users/abertschi/Dropbox/tmp/omelettes'
-    //     at Error (native)
-
-
     this._uploadHistory = new Map();
     this._downloadHistory = new Map();
+    this._restoringLastHistory();
   }
 
   start() {
@@ -109,38 +88,17 @@ export default class SyncManager extends EventEmitter {
   pushUpload(change) {
     if (change && change.path && !change.path.endsWith(DOWNLOAD_SUFFIX)) {
       if (!change.pathOrigin || change.pathOrigin && !change.pathOrigin.endsWith(DOWNLOAD_SUFFIX)) {
-
-        // only add if not in download history
         this._uploadQueue.push(change);
       }
     }
   }
 
-  _addUploadToHistory(provider, file) {
-    return Bacon.fromPromise(provider.accountId())
-      .flatMap(providerId => {
-        let key = this._createHistoryKey(file.action, this._removeWatchHome(file.path));
-        let uploads = this._uploadHistory.get(providerId) || [];
-        uploads.push({
-          key: key,
-          file: file
-        });
-        this._uploadHistory.set(providerId, uploads);
-      }).toPromise();
-  }
-
-  _addDownloadToHistory(file) {
-    let key = this._createHistoryKey(file.action, file.path);
-    this._downloadHistory.set(key, file);
-  }
-
   async nextUpload(change) {
-    log.info('next upload', change.path);
     return new Promise((resolve, reject) => {
       let provider = this._getProvider();
       let key = this._createHistoryKey(change.action, this._removeWatchHome(change.path));
       let isRelevant = this._downloadHistory.get(key) == null;
-      log.debug('Is %s relevant: %s', key, isRelevant);
+
       if (isRelevant) {
         let promise = this._doUpload(provider, change, reject);
         if (!promise) {
@@ -274,7 +232,9 @@ export default class SyncManager extends EventEmitter {
         return Bacon.fromPromise(provider.accountId())
           .flatMap(providerId => {
 
-            let uploads = this._uploadHistory.get(providerId) || [];
+            let uploads = this._uploadHistory.get(providerId);
+            if (!uploads) uploads = [];
+
             this._uploadHistory.set(providerId, []);
 
             return Bacon.fromPromise(provider.pullChanges())
@@ -314,7 +274,6 @@ export default class SyncManager extends EventEmitter {
 
   _startFetchInterval() {
     // TODO: check internet connectivity before calling providers
-
     let working = false;
     this._fetchInterval = setInterval(() => {
       if (!working) {
@@ -354,6 +313,27 @@ export default class SyncManager extends EventEmitter {
           return download;
         }
       }).toPromise();
+  }
+
+  _addUploadToHistory(provider, file) {
+    return Bacon.fromPromise(provider.accountId())
+      .flatMap(providerId => {
+        let key = this._createHistoryKey(file.action, this._removeWatchHome(file.path));
+        let uploads = this._uploadHistory.get(providerId);
+        if (!uploads) uploads = [];
+
+        uploads.push({
+          key: key,
+          file: file
+        });
+
+        this._uploadHistory.set(providerId, uploads);
+      }).toPromise();
+  }
+
+  _addDownloadToHistory(file) {
+    let key = this._createHistoryKey(file.action, file.path);
+    this._downloadHistory.set(key, file);
   }
 
   async _getProviderById(id) {
@@ -399,5 +379,29 @@ export default class SyncManager extends EventEmitter {
     // - track which provider stores what file?
     // how to make sure to delete all files within a folder remove
     return this.providers.length ? this.providers[0] : null;
+  }
+
+  _restoringLastHistory() {
+    const UPLOAD_HIST = 'SYNC_MANAGER_UPLOAD_HIST';
+    const DOWNLOAD_HIST = 'SYNC_MANAGER_DOWNLOAD_HIST';
+
+    Settings.unmarshall(UPLOAD_HIST)
+      .then(hist => {
+        this._uploadHistory = new Map(hist);
+      }).catch(log.error);
+    Settings.unmarshall(DOWNLOAD_HIST)
+      .then(hist => {
+        this._downloadHistory = new Map(hist);
+      }).catch(log.error);
+
+    log.info('download hist: ', this._downloadHistory);
+    log.info('upload hist: ', this._uploadHistory);
+
+    process.on('SIGINT', () => {
+      Settings.marshall(UPLOAD_HIST, this._uploadHistory);
+      Settings.marshall(DOWNLOAD_HIST, this._downloadHistory);
+
+      setTimeout(() => NaN)
+    }, 5000);
   }
 }

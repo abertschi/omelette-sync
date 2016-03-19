@@ -12,6 +12,21 @@ class Settings {
       .toPromise();
   }
 
+  marshall(key, value) {
+    let json = JSON.stringify(value);
+    return this.set(key, json);
+  }
+
+  unmarshall(key) {
+    return Bacon.fromPromise(this.get(key))
+      .flatMap(value => {
+        if (value) {
+          value = JSON.parse(value);
+        }
+        return value;
+      }).toPromise();
+  }
+
   set(key, value) {
     const INSERT = 'INSERT into SETTINGS (key, value) VALUES(?, ?)';
     const UPDATE = 'UPDATE SETTINGS set value=? where key=?';
