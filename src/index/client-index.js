@@ -1,6 +1,7 @@
 import Bacon from 'baconjs';
 import db from '../db.js';
 import pathUtils from 'path';
+let log = require('../debug.js')('index');
 
 class ClientIndex {
 
@@ -10,9 +11,11 @@ class ClientIndex {
     return this.get(key)
       .flatMap(row => {
         if (row) {
+          log.debug('%s existing in client-index, updating', path);
           return this._update(row, key, path, payload)
             .flatMap(() => this._updatePath(key, path, row.path));
         } else {
+          log.debug('%s new in client-index, inserting', path);
           return this._insert(key, path, payload);
         }
       });
@@ -106,16 +109,13 @@ class ClientIndex {
   }
 
   _updatePath(key, path, pathOrigin) {
-    const SELECT_BY_PATH = 'SELECT key, path, payload FROM CLOUD_INDEX WHERE path LIKE ?';
+    const SELECT_BY_PATH = 'SELECT key, path, payload FROM CLIENT_INDEX WHERE path LIKE ?';
 
     return Bacon.fromNodeCallback(db, 'all', SELECT_BY_PATH, pathOrigin + '%')
       .flatMap(rows => {
-        let rootPathOrigin = rootNode.payload.isDir ? rootNode.path : pathUtils.dirname(rootNode.path);
-        let rootPath = rootNode.payload.isDir ? path : pathUtils.dirname(path);
-
         return Bacon.fromArray(rows)
           .flatMap(row => {
-            let newPath = row.path.replace(rootPathOrigin, rootPath);
+            let newPath = row.path.replace(pathOrigin, path);
             return this._update(row, row.key, newPath);
           });
       });

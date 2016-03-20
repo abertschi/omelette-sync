@@ -89,11 +89,8 @@ export default class Watcher extends EventEmitter {
   _enrichChange(file) {
     log.trace('Processing change %s (%s) [%s]', file.path, file.action, file.id);
     return addToIndex(file, this.directory)
-      .map(() => {
+      .flatMap(() => {
         log.trace('Index updated for %s', file.path);
-        return file;
-      })
-      .map(file => {
         file.timestamp = new Date();
         return file;
       });
