@@ -1,16 +1,9 @@
 import Bacon from 'baconjs';
-import db from './db.js';
-import getFromIndexById from './index/get-from-index-by-id.js';
-import getFromIndexByPath from './index/get-from-index-by-path.js';
-
-import {createBufferdStream} from './util/stream-helpers.js';
 import existsOnDisk from './util/exists-on-disk.js';
 import getFileStats from './util/get-file-stats.js';
-
 let log = require('./debug.js')('watcher');
 
 export default function prepareFsWatchStream(file) {
-
   return createMetaStream(file)
     .doAction(file => {
       log.trace('Processing %s with action %s', file.path, file.action);

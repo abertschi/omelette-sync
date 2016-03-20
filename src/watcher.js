@@ -4,12 +4,13 @@ import colors from 'colors';
 import Bacon from 'baconjs';
 import db from './db.js';
 import addToIndex from './index/add-to-index.js';
-import emptyIndex from './index/empty-index.js';
 import prepareFsWatchStream from './prepare-fswatch-stream.js';
 import prepareShellStream from './prepare-shell-stream.js';
 import ShellWatcher from './watcher/shell-watcher.js';
 import FsWatchWatcherOsx from './watcher/fswatch-watcher-osx.js';
+import mergeObjects from './util/merge-objects.js';
 import os from 'os';
+import clientIndex from './index/client-index.js';
 import EventEmitter from 'events';
 
 import {
@@ -39,10 +40,13 @@ export default class Watcher extends EventEmitter {
 
   indexEverything() {
     log.debug(`Creating new index for ${this.directory}`);
-    emptyIndex().flatMap(() => {
+
+    clientIndex.emptyIndex().flatMap(() => {
         let stream = listRecursive(this.directory)
           .flatMap(file => {
             file.action = 'ADD';
+            file.payload = file.payload ? file.payload : {};
+            file.payload.isDir = file.isDir;
             return file;
           });
         stream.onEnd(() => {
@@ -56,7 +60,9 @@ export default class Watcher extends EventEmitter {
 
   getChangesSince(date) {
     log.debug(`Searching for changes since %s for %s`, date, this.directory);
+    log.debug(date);
     listChanges(this.directory, date).flatMap(file => {
+        log.debug('Detected offline change %s', file.path);
         let shell = prepareShellStream(file);
         shell.onEnd(() => {
           this.emit('changes-since-done');

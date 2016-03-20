@@ -1,6 +1,5 @@
 import Bacon from 'baconjs';
 import db from '../db.js';
-let log = require('../debug.js')('index');
 import pathUtils from 'path';
 
 class ClientIndex {
@@ -20,12 +19,12 @@ class ClientIndex {
   }
 
   removeByPath(path) {
-    const SQL = 'DELETE from CLIENT_INDEX where path LIKE %s';
-    return Bacon.fromNodeCallback(db, 'get', SQL, key + '%');
+    const SQL = 'DELETE from CLIENT_INDEX where path LIKE ?';
+    return Bacon.fromNodeCallback(db, 'get', SQL, path + '%');
   }
 
   removeByKey(key) {
-    const SQL = 'DELETE from CLIENT_INDEX where key=s';
+    const SQL = 'DELETE from CLIENT_INDEX where key=?';
     return Bacon.fromNodeCallback(db, 'get', SQL, key);
   }
 
