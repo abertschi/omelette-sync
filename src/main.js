@@ -7,7 +7,7 @@ import fs from 'fs';
 import Settings from './settings.js';
 
 import SyncManager from './sync-manager.js';
-import getGoogleAuthToken from './cloud/get-google-auth-token.js';
+import getGoogleAuthToken from './cli/get-google-auth-token.js';
 import GoogleDrive from './cloud/google-drive.js';
 
 let log = require('./debug.js')('');
