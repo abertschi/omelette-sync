@@ -6,6 +6,10 @@ import fs from 'fs';
 import ChangeRunner from './change-runner.js';
 import FileWorker from './file-worker.js';
 import Settings from './settings.js';
+import events, {
+  actions
+} from './events';
+
 const EventEmitter = require('events');
 
 let log = require('./debug.js')('syncmanager');
@@ -100,14 +104,22 @@ export default class SyncManager extends EventEmitter {
       let isRelevant = this._downloadHistory.get(key) == null;
 
       if (isRelevant) {
+        this.emit(actions.UPLOADING, change);
+
         let promise = this._doUpload(provider, change, reject);
         if (!promise) {
           reject();
         } else {
           promise.then(then => {
-            this._addUploadToHistory(provider, change)
-              .then(() => resolve(then)).catch(reject);
-          }).catch(reject);
+              this.emit(actions.UPLOAD_DONE, change);
+              this._addUploadToHistory(provider, change)
+                .then(() => resolve(then))
+                .catch(reject);
+            })
+            .catch(err => {
+              this.emit(actions.UPLOAD_DONE, change);
+              reject(err)
+            });
         }
       } else {
         log.debug('Ignoring %s for upload', key);
@@ -141,7 +153,6 @@ export default class SyncManager extends EventEmitter {
         break;
       case 'MOVE':
         let fromPath = file.pathOrigin.replace(this.watchHome, '');
-
         log.info('[Upload] Moving %s to %s', fromPath, targetPath);
         promise = Bacon
           .fromPromise(provider.move(fromPath, targetPath))
@@ -149,7 +160,6 @@ export default class SyncManager extends EventEmitter {
           .toPromise();
         break;
       case 'REMOVE':
-
         log.info('[Upload] Removing %s', targetPath);
         promise = Bacon
           .fromPromise(provider.remove(targetPath))
@@ -168,6 +178,7 @@ export default class SyncManager extends EventEmitter {
     if (file.path) {
       this._addDownloadToHistory(file);
       let pathPrefixed = this._prefixWithWatchHome(file.path);
+
       if (file.action == 'MOVE' && file.pathOrigin) {
         log.info('[Download] Moving %s to %s', file.pathOrigin, pathPrefixed);
         let pathFrom = this._prefixWithWatchHome(file.pathOrigin);
@@ -190,6 +201,18 @@ export default class SyncManager extends EventEmitter {
       }
     } else {
       log.info('Invalid data %s', file);
+    }
+
+    if (promise) {
+      this.emit(actions.DOWNLOADING, file);
+      promise.then(then => {
+          this.emit(actions.DOWNLOAD_DONE, file);
+          return then;
+        })
+        .catch(error => {
+          this.emit(actions.DOWNLOAD_DONE, file);
+          return error;
+        });
     }
     return promise;
   }
@@ -234,7 +257,6 @@ export default class SyncManager extends EventEmitter {
 
             let uploads = this._uploadHistory.get(providerId);
             if (!uploads) uploads = [];
-
             this._uploadHistory.set(providerId, []);
 
             return Bacon.fromPromise(provider.pullChanges())
@@ -389,6 +411,7 @@ export default class SyncManager extends EventEmitter {
       .then(hist => {
         this._uploadHistory = new Map(hist);
       }).catch(log.error);
+
     Settings.unmarshall(DOWNLOAD_HIST)
       .then(hist => {
         this._downloadHistory = new Map(hist);
