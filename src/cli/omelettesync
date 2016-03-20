@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+
+import googleAuth from './get-google-auth-token.js';
+import Settings from '../settings.js';
+
+var argv = require('yargs')
+  .usage('Usage: $0 <command> [options]')
+  .command('setup', 'Setup an account for synchronization')
+  // .command('push', 'Push all local changes to cloud')
+  // .command('pull', 'Pull all remote changes from cloud')
+  .command('watch', 'Watch for changes and synchronize with cloud')
+  .help('h')
+  .alias('h', 'help')
+  .count('event-flags')
+  .alias('x', 'event-flags')
+  .describe('x', 'Print event flags')
+  .count('trace')
+  .alias('t', 'trace')
+  .describe('t', 'Trace implementation output for debugging.')
+  .alias('m', 'monitor')
+  .describe('m', 'Manually set watch monitor implementation.')
+  .demand(1)
+  .strict()
+  .epilog('copyright 2016 by Andrin Bertschi')
+  .argv;
+
+console.log(argv._);
+
+
+let command = argv._;
+if (command == 'setup') {
+  googleAuth.getGoogleAuth();
+} else if (command == 'watch') {
+  googleAuth.getGoogleAuth();
+}

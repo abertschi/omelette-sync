@@ -37,6 +37,7 @@
     "superagent-promise": "^1.1.0",
     "trash": "^3.4.1",
     "username": "^2.0.0",
-    "webworker": "^0.8.4"
+    "webworker": "^0.8.4",
+    "yargs": "^4.3.2"
   }
 }
