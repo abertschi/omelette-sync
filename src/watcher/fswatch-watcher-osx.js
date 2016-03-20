@@ -16,7 +16,6 @@ export default class FsWatchWatcherOsx {
     if (!options.directory) {
       throw new Error('Directory not specified');
     }
-
     this.directory = options.directory;
     this.watchSpawn = null;
   }
@@ -28,7 +27,8 @@ export default class FsWatchWatcherOsx {
 
     return Bacon.fromPromise(username())
       .flatMap(username => {
-        return this._processOutput(this.watchSpawn, username);
+        this._username = username;
+        return this._processOutput(this.watchSpawn);
       })
   }
 
@@ -39,23 +39,7 @@ export default class FsWatchWatcherOsx {
     }
   }
 
-  _processOutput(cmd, username) {
-
-    const TRASH = `/Users/${username}/.Trash`;
-    let isTrash = (raw) => {
-      return raw.indexOf(TRASH) > -1 ? true : false;
-    }
-
-    let isInDirectory = (raw) => {
-      return (raw.indexOf(this.directory) > -1);
-    };
-
-    let isRelevant = (raw) => {
-      if (isInDirectory(raw)) return true;
-      else if (isTrash(raw)) return true;
-      else return false;
-    }
-
+  _processOutput(cmd) {
     let results = Bacon
       .fromEvent(cmd.stdout, 'data')
       .map(raw => String(raw))
@@ -81,27 +65,38 @@ export default class FsWatchWatcherOsx {
         else {
           file.action = 'ADD'; // treat a CHANGE as an ADD
         }
-
         return file;
       });
 
-    let cache = createBufferdStream(results, 2);
+    let moveStream = this._createMoveStream(createBufferdStream(results, 2));
+    results = results
+      .filter(f => f.action != 'MOVE')
+      .filter(f => this._isInDirectory(f.path));
 
-    let moveStream = cache.changes()
+    let errors = Bacon
+      .fromEvent(cmd.stderr, 'data')
+      .map(raw => new Bacon.Error(String(raw)))
+      .doAction(f => log.error(f));
+
+    return results.merge(moveStream).merge(errors);
+  }
+
+  _createMoveStream(stream) {
+    return stream.changes()
       .flatMap(cache => {
         if (cache.length >= 2) {
           let source = cache[0]; // move from event
           let target = cache[1]; // move to event
 
           if (source.action == 'MOVE' && target.action == 'MOVE') {
-            if (isInDirectory(source.path)) {
-              if (isTrash(target.path)) {
+            if (this._isInDirectory(source.path)) {
+              if (this._isTrash(target.path)) {
                 log.trace('Detect MOVE to trash of %s (to %s)', source.path, target.path);
 
                 source.action = 'REMOVE';
                 return source;
               } else if (path.basename(source.path) == path.basename(target.path) || path.dirname(source.path) == path.dirname(target.path)) {
-                if (isInDirectory(target.path)) {
+                if (this._isInDirectory(target.path)) {
                   log.trace('Detect MOVE within watched directory [%s to %s]', source.path, target.path);
 
                   target.pathOrigin = source.path;
@@ -113,7 +108,7 @@ export default class FsWatchWatcherOsx {
                   return source;
                 }
               }
-            } else if (isInDirectory(target.path)) {
+            } else if (this._isInDirectory(target.path)) {
               if (path.basename(source.path) == path.basename(target.path) || path.dirname(source.path) == path.dirname(target.path)) {
                 log.trace('Detect ADD of file moved to watched directory [%s to %s]', source.path, target.path);
 
@@ -124,16 +119,20 @@ export default class FsWatchWatcherOsx {
           }
         }
       }).filter(f => f != undefined);
+  }
 
-    results = results
-      .filter(f => f.action != 'MOVE')
-      .filter(f => isInDirectory(f.path));
+  _isTrash(location) {
+    const TRASH = `/Users/${username}/.Trash`;
+    return location.indexOf(TRASH) > -1 ? true : false;
+  }
 
-    let errors = Bacon
-      .fromEvent(cmd.stderr, 'data')
-      .map(raw => new Bacon.Error(String(raw)))
-      .doAction(f => log.error(f));
+  _isInDirectory(location) {
+    return (location.indexOf(this.directory) > -1);
+  }
 
-    return results.merge(moveStream).merge(errors);
+  _isRelevant(raw) {
+    if (this._isInDirectory(raw)) return true;
+    else if (this._isTrash(raw)) return true;
+    else return false;
   }
 }
