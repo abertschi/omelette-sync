@@ -1,17 +1,24 @@
 import Bacon from 'baconjs';
 import db from './db.js';
+import clientIndex from './index/client-index.js';
+import mergeObjects from './util/merge-objects.js';
 
-import getFromIndexById from './index/get-from-index-by-id.js';
-import getChildrenOfDirectoryFromIndex from './index/get-children-of-directory-from-index.js';
-
-import {list} from './offline/shell-list-files.js'
+import {
+  list
+} from './offline/shell-list-files.js'
 
 let log = require('./debug.js')('watcher');
 
 export default function prepareShellStream(file) {
 
-  return getFromIndexById(file.id)
+  log.trace('prepareshellstream for %s', file);
+
+  return clientIndex.get(file.id)
     .flatMap(index => {
+      log.trace('Index entry for %s is %s', file.id, index);
+      file.payload = {};
+      file.payload.isDir = file.isDir;
+
       if (!index) {
         file.action = 'ADD';
         log.trace('detect [%s] for %s', file.action, file.path);
@@ -19,11 +26,13 @@ export default function prepareShellStream(file) {
       } else if (index && !file.isDir) {
         if (file.path == index.path) {
           file.action = 'CHANGE';
+          file.payload = mergeObjects(file.payload, index.payload);
           log.trace('detect [%s] for %s', file.action, file.path);
           return file;
         } else {
           file.pathOrigin = index.path;
           file.action = 'MOVE';
+          file.payload = mergeObjects(file.payload, index.payload);
           log.trace('detect [%s] for %s', file.action, file.path);
           return file;
         }
@@ -31,8 +40,39 @@ export default function prepareShellStream(file) {
         return Bacon.once()
           .flatMap(() => {
             return listDirectory(file.path)
-              .flatMap((fromDisk) => {
-                return getChildrenOfDirectoryFromIndex(file)
+              .flatMap(fromDisk => Bacon.fromArray(fromDisk))
+              .filter(fromDisk => fromDisk)
+              .flatMap(diskChange => {
+                return {
+                  id: diskChange.id,
+                  path: diskChange.path,
+                  isDir: diskChange.isDir,
+                  payload: {
+                    isDir: diskChange.isDir
+                  }
+                };
+              })
+              .fold([], (array, change) => {
+                array.push(change);
+                return array;
+              })
+              //.doAction(changes => log.trace('fromDisk ', changes))
+              .flatMap(fromDisk => {
+                return clientIndex.getChildrenWithinPath(file.path)
+                  .flatMap(fromIndex => Bacon.fromArray(fromIndex))
+                  .filter(change => change)
+                  .flatMap(indexChange => {
+                    return {
+                      id: indexChange.id,
+                      path: indexChange.path,
+                      payload: indexChange.payload
+                    };
+                  })
+                  .fold([], (array, change) => {
+                    array.push(change);
+                    return array;
+                  })
+                  //.doAction(changes => log.trace('fromIndex ', changes))
                   .flatMap(fromIndex => {
                     return compareDiskWithIndex(file, fromDisk, fromIndex);
                   });
@@ -43,8 +83,7 @@ export default function prepareShellStream(file) {
 }
 
 function compareDiskWithIndex(file, fromDisk, fromIndex) {
-
-  return Bacon.fromBinder(function(sink) {
+  return Bacon.fromBinder(sink => {
     const DISK_MAP = createIdMap(fromDisk);
     const INDEX_MAP = createIdMap(fromIndex);
 
@@ -59,6 +98,7 @@ function compareDiskWithIndex(file, fromDisk, fromIndex) {
           log.trace('detect [MOVE] for %s to %s', index.path, disk.path);
           disk.pathOrigin = index.path;
           disk.action = 'MOVE';
+          disk.payload = mergeObjects(disk.payload, index.payload);
           sink(disk);
         }
       } else {
@@ -69,7 +109,9 @@ function compareDiskWithIndex(file, fromDisk, fromIndex) {
         sink({
           id: index.id,
           path: index.path,
-          action: 'REMOVE'
+          isDir: index.payload ? index.payload.isDir : null,
+          action: 'REMOVE',
+          payload: index.payload
         });
       }
     });
