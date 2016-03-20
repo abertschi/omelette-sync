@@ -11,7 +11,7 @@ const TOKEN_KEY = 'google-drive-auth';
 
 export default function getGoogleAuth() {
 
-  let token = Settings.unmarshall(TOKEN_KEY);
+
 
   return Bacon.once(token)
     .flatMap((token) => {

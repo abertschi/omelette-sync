@@ -6,6 +6,7 @@
   "scripts": {
     "start": "DEBUG=bean:app*,omelette:*,-*:trace* ./node_modules/.bin/babel-node src/main.js",
     "trace": "DEBUG=bean:app*,omelette:* ./node_modules/.bin/babel-node src/main.js",
+    "bin": "DEBUG=omelette:* ./node_modules/.bin/babel-node src/cli/omelettesync",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Andrin Bertschi",
@@ -39,5 +40,9 @@
     "username": "^2.0.0",
     "webworker": "^0.8.4",
     "yargs": "^4.3.2"
+  },
+  "devDependencies": {
+    "gulp": "^3.9.1",
+    "gulp-concat": "^2.6.0"
   }
 }

@@ -45,7 +45,7 @@ Settings.unmarshall('lastrun')
     providers: [drive],
     watchHome: WATCH_HOMEDIR,
   });
-  //manager.start();
+  manager.start();
 
   watcher = new Watcher({
     directory: WATCH_HOMEDIR,
@@ -68,7 +68,7 @@ Settings.unmarshall('lastrun')
 
   watcher.on('change', change => {
     log.debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
-    //manager.pushUpload(change);
+    manager.pushUpload(change);
   });
 });
 

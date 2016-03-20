@@ -1,7 +1,17 @@
 #!/usr/bin/env node
 
-import googleAuth from './get-google-auth-token.js';
+import colors from 'colors';
+import googleAuth from '../cloud/google-auth.js';
+import readline from 'readline';
+import Bacon from 'baconjs';
 import Settings from '../settings.js';
+import prompt from 'prompt'
+import boot from './boot.js';
+import mkdirp from 'mkdirp'
+
+const CLI_SETUP = 'cli-setup';
+const HOME_FOLDER = (process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE);
+
 
 var argv = require('yargs')
   .usage('Usage: $0 <command> [options]')
@@ -11,25 +21,123 @@ var argv = require('yargs')
   .command('watch', 'Watch for changes and synchronize with cloud')
   .help('h')
   .alias('h', 'help')
-  .count('event-flags')
-  .alias('x', 'event-flags')
-  .describe('x', 'Print event flags')
-  .count('trace')
-  .alias('t', 'trace')
-  .describe('t', 'Trace implementation output for debugging.')
-  .alias('m', 'monitor')
-  .describe('m', 'Manually set watch monitor implementation.')
+  // .count('event-flags')
+  // .alias('x', 'event-flags')
+  // .describe('x', 'Print event flags')
+  // .count('trace')
+  // .alias('t', 'trace')
+  // .describe('t', 'Trace implementation output for debugging.')
+  // .alias('m', 'monitor')
+  // .describe('m', 'Manually set watch monitor implementation.')
   .demand(1)
   .strict()
   .epilog('copyright 2016 by Andrin Bertschi')
   .argv;
 
-console.log(argv._);
-
-
 let command = argv._;
+
 if (command == 'setup') {
-  googleAuth.getGoogleAuth();
+  setup();
 } else if (command == 'watch') {
-  googleAuth.getGoogleAuth();
+  isSetup()
+    .then(found => {
+      if (!found) {
+        error('No account set. Run --setup first.');
+        process.exit(1);
+      }
+      return;
+    })
+    .then(() => getSetup())
+    .then(setup => {
+      let auth = googleAuth.getAuthByToken(setup.token);
+      let watchHome = setup.watchHome;
+      let mountDir = setup.mountDir;
+
+      boot(auth, watchHome, mountDir);
+
+    })
+    .catch(err => error(err));
+}
+
+function setup() {
+  prompt.message = '> '.blue;
+  prompt.delimiter = ':'.grey;
+
+  let tokenPrompt = {
+    name: 'authToken',
+    description: 'Authorization Token'.white,
+    type: 'string',
+    required: true
+  };
+
+  let clientDirPrompt = {
+    name: 'client',
+    description: 'Which folder do you want to synchronize with the cloud?'.white,
+    type: 'string',
+    required: true,
+    default: HOME_FOLDER + '/omelettesync'
+  }
+
+  let cloudDirPrompt = {
+    name: 'cloud',
+    description: 'Where do you want to store your files in the cloud?'.white,
+    type: 'string',
+    required: false,
+    default: '/omelettesync'
+  };
+
+  let url = googleAuth.generateAuthUrl();
+  log('Setup an account'.white)
+  log('Authorize omelettesync to access your Google Drive account by visiting this url:'.white)
+  console.log('\n' + colors.green(url) + '\n');
+
+  prompt.get(tokenPrompt, (err, input) => {
+    prompt.get([clientDirPrompt, cloudDirPrompt], (err, dirs) => {
+
+      mkdirp(dirs.client, (err) => {
+        if (err) {
+          error(err);
+          process.exit(1);
+        } else {
+          googleAuth.getTokenByAuthCode(input.authToken)
+            .then(auth => {
+              let prefs = {
+                token: auth,
+                watchHome: dirs.client,
+                mountDir: dirs.cloud
+              };
+
+              saveSetup(prefs);
+            })
+            .catch(err => {
+              error('Permisson rejected. Auth code wrong.');
+              error(err);
+              process.exit(1);
+            });
+        }
+      });
+    });
+  });
+}
+
+
+function isSetup() {
+  return Settings.get(CLI_SETUP)
+    .then(got => got != null);
+}
+
+function getSetup() {
+  return Settings.unmarshall(CLI_SETUP);
+}
+
+function saveSetup(setup) {
+  Settings.marshall(CLI_SETUP, setup);
+}
+
+function log(msg) {
+  console.log('> '.blue + msg);
+}
+
+function error(msg) {
+  console.log(msg.red);
 }
