@@ -11,32 +11,33 @@ let log = require('./debug.js')('watcher');
 
 export default function prepareShellStream(file) {
 
-  log.trace('prepareshellstream for %s', file);
-
-  return clientIndex.get(file.id)
+  return Bacon.once(file)
+    .filter(file => file)
+    .flatMap(file => clientIndex.get(file.id))
     .flatMap(index => {
-      log.trace('Index entry for %s is %s', file.id, index);
+      log.debug('Index entry for %s is %s', file.id, index ? index.path : null);
       file.payload = {};
       file.payload.isDir = file.isDir;
 
       if (!index) {
         file.action = 'ADD';
-        log.trace('detect [%s] for %s', file.action, file.path);
+        log.debug('detect [%s] for %s', file.action, file.path);
         return file;
       } else if (index && !file.isDir) {
         if (file.path == index.path) {
           file.action = 'CHANGE';
           file.payload = mergeObjects(file.payload, index.payload);
-          log.trace('detect [%s] for %s', file.action, file.path);
+          log.debug('detect [%s] for %s', file.action, file.path);
           return file;
         } else {
           file.pathOrigin = index.path;
           file.action = 'MOVE';
           file.payload = mergeObjects(file.payload, index.payload);
-          log.trace('detect [%s] for %s', file.action, file.path);
+          log.debug('detect [%s] for %s', file.action, file.path);
           return file;
         }
       } else if (index && file.isDir) {
+        log.debug('detection of [%s] unclear. Comparing with files on disk', file.path);
         return Bacon.once()
           .flatMap(() => {
             return listDirectory(file.path)
@@ -56,14 +57,14 @@ export default function prepareShellStream(file) {
                 array.push(change);
                 return array;
               })
-              //.doAction(changes => log.trace('fromDisk ', changes))
+              .doAction(changes => log.trace('Quering file nodes on disk %s', changes))
               .flatMap(fromDisk => {
                 return clientIndex.getChildrenWithinPath(file.path)
                   .flatMap(fromIndex => Bacon.fromArray(fromIndex))
                   .filter(change => change)
                   .flatMap(indexChange => {
                     return {
-                      id: indexChange.id,
+                      id: indexChange.key,
                       path: indexChange.path,
                       payload: indexChange.payload
                     };
@@ -72,7 +73,7 @@ export default function prepareShellStream(file) {
                     array.push(change);
                     return array;
                   })
-                  //.doAction(changes => log.trace('fromIndex ', changes))
+                  .doAction(changes => log.trace('Quering file nodes in index %s', changes))
                   .flatMap(fromIndex => {
                     return compareDiskWithIndex(file, fromDisk, fromIndex);
                   });
@@ -95,7 +96,7 @@ function compareDiskWithIndex(file, fromDisk, fromIndex) {
          * Check change again to detect RENAME.
          */
         if (disk.path != index.path) {
-          log.trace('detect [MOVE] for %s to %s', index.path, disk.path);
+          log.debug('detect [MOVE] for %s to %s', index.path, disk.path);
           disk.pathOrigin = index.path;
           disk.action = 'MOVE';
           disk.payload = mergeObjects(disk.payload, index.payload);
@@ -105,7 +106,7 @@ function compareDiskWithIndex(file, fromDisk, fromIndex) {
         /*
          * Change is not on disk but in index, REMOVE change from index.
          */
-        log.trace('detect [REMOVE] for %s', index.path);
+        log.debug('detect [REMOVE] for %s', index.path);
         sink({
           id: index.id,
           path: index.path,
@@ -121,7 +122,7 @@ function compareDiskWithIndex(file, fromDisk, fromIndex) {
         /*
          * Change is on disk but not in index, check change again so it will be ADDED.
          */
-        log.trace('check for possible [ADD] of %s', disk.path);
+        log.debug('check for possible [ADD] of %s', disk.path);
         prepareShellStream(disk)
           .onValue(change => {
             sink(change);

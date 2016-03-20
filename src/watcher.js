@@ -27,7 +27,11 @@ export default class Watcher extends EventEmitter {
 
   constructor(options = {}) {
     super();
-    this.directory = options.directory;
+    if (!options.directory) {
+      throw new Error('Directory not set');
+    }
+
+    this.directory = this._parepareDirectory(options.directory);
     this.type = options.type || os.type();
     this.watcher = null;
 
@@ -125,5 +129,9 @@ export default class Watcher extends EventEmitter {
         return prepareFsWatchStream(file);
       });
     }
+  }
+
+  _parepareDirectory(dir) {
+    return dir.endsWith('/') ? dir.substring(0, dir.length -1) : dir;
   }
 }

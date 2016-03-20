@@ -6,6 +6,7 @@ export default function addToIndex(file) {
   switch (file.action) {
     case 'ADD':
     case 'MOVE':
+      log.debug('Add or updating index for %s', file.path);
       return clientIndex.addOrUpdate(file.id, file.path, file.payload);
       break;
 
