@@ -53,7 +53,6 @@ export default class ShellScanner {
           isDir: isDir,
           path: path
         };
-
       });
 
       let bus = new Bacon.Bus();

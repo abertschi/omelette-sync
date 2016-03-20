@@ -38,12 +38,12 @@ getGoogleAuthToken().then(bundle => {
     providers: [drive],
     watchHome: WATCH_HOMEDIR,
   });
-  manager.start();
+  //manager.start();
 
   watcher = new Watcher({
     directory: WATCH_HOMEDIR,
     since: lastrun,
-    init: init,
+    init: false,
     type: 'fswatch'
   });
 
@@ -61,12 +61,14 @@ getGoogleAuthToken().then(bundle => {
 
   watcher.on('change', change => {
     log.debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
-    manager.pushUpload(change);
+    //manager.pushUpload(change);
   });
 });
 
 process.on('SIGINT', function() {
-  Storage.setItem('lastrun', new Date());
+  let lastrun = new Date();
+  log.info('Setting lastrun to %s', lastrun);
+  Storage.setItem('lastrun', lastrun);
   watcher.unwatch();
   setTimeout(function() {
     process.exit(1);

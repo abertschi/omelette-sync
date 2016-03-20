@@ -1,14 +1,13 @@
 import childProcess from 'child_process';
 import Bacon from 'baconjs';
 import getFileStats from './../util/get-file-stats.js';
-
-let log = require('../debug.js')('watcher');
-var path = require('path');
+import username from 'username';
 import {
   createBufferdStream
 } from './../util/stream-helpers.js';
-import username from 'username';
 
+let log = require('../debug.js')('watcher');
+var path = require('path');
 
 export default class FsWatchWatcherOsx {
 
