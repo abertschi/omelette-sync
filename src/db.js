@@ -3,7 +3,10 @@ let log = require('./debug.js')('db');
 var fs = require('fs');
 
 let noSchema = false;
-const DB_PATH = './mydb.db';
+
+import appData from './util/appdata-dir.js';
+
+const DB_PATH = appData() + 'omelettesync.db';
 
 try {
   fs.readFileSync(DB_PATH);
@@ -17,7 +20,6 @@ if (noSchema) {
   log.debug('Creating database schema at %s', DB_PATH);
 
   db.serialize(function() {
-    db.run("CREATE TABLE DIRECTORY_INDEX (path TEXT, is_dir INT, file_id TEXT, payload JSON)");
     db.run("CREATE TABLE CLIENT_INDEX (key TEXT, path TEXT, payload TEXT)");
     db.run("CREATE TABLE CLOUD_INDEX (provider TEXT, key TEXT, payload TEXT)");
     db.run("CREATE TABLE UPLOAD_QUEUE (action TEXT, path TEXT, json TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, active INT DEFAULT 0)");
