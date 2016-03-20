@@ -17,17 +17,25 @@ Supported cloud storage providers:
 This application is in an early development stage and not yet ready for any use.
 
 - [x] Implement a changes listener for OSX
-- [ ] Implement a changes listener for GNU/Linux
-- [ ] Upload, Remove, Move files on Google Drive
+- [x] Implement a changes listener for GNU/Linux
+- [x] Upload, Remove, Move files on Google Drive
 - [ ] Upload controller to distribute files among multiple providers/ accounts
-- [ ] Encryption mechanism
+- [x] Encryption mechanism
 - [ ] Frontend to configure accounts and see sync status
 - [ ] Menubar application for OSX
 
-## Design notes
-- communication between client and daemon with websockets
-- electron client
-- mac osx menubar app
+## Tasks
+- [ ] add binary version of fswatch for mac osx
+- [ ] test shellwatcher under linux
+- [ ] add cli
+ - [ ] store google drive auth in database
+ - [ ] add dialog to set mountdir, watchhome and other prefs in cli
+ - [ ] add options to pull or push only
+- [ ] proper error and logging events
+- [ ] add task to transform es6 code
+- [ ] googledriveapi: detect changes limited to mountdir
+- [ ] move files to trash rather than erase completely
+
 
 ## License
 This project is released under the GNU General Public License v3.
