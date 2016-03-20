@@ -1,11 +1,9 @@
 import db from './db.js';
-var Promise = require('bluebird');
 import Bacon from 'baconjs';
-let log = require('./debug.js')('queue');
-
-//const db = Promise.promisifyAll(_db);
-
 import EventEmitter from 'events';
+
+var Promise = require('bluebird');
+let log = require('./debug.js')('queue');
 
 export default class ChangeQueue extends EventEmitter {
 
@@ -18,13 +16,6 @@ export default class ChangeQueue extends EventEmitter {
     }
   }
 
-  // let change = {
-  //   action: 'ADD | REMOVE | MOVE | DOWNLOAD',
-  //   path: '/any/path/to/file',
-  //   pathOrigin: '/any/path/for/move'
-  //   payload: {
-  //   }
-  // };
   push(change) {
     return this._hasKey(change.action, change.path)
       .filter(found => !found)
