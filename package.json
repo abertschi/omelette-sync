@@ -4,9 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "DEBUG=bean:app*,omelette:*,-*:trace* ./node_modules/.bin/babel-node src/cli/omelettesync.js",
     "trace": "DEBUG=bean:app*,omelette:* ./node_modules/.bin/babel-node src/cli/omelettesync.js",
+    "start": "DEBUG=bean:app*,omelette:*,-*:trace* ./node_modules/.bin/babel-node src/cli/omelettesync.js",
+
     "bin": "./node_modules/.bin/babel-node src/cli/omelettesync.js",
+
     "test": "echo \"Error: no test specified\" && exit 1",
     "watch": "babel --watch src --out-dir lib --source-maps inline --copy-files",
     "build": "babel src --out-dir lib --source-maps inline --copy-files"

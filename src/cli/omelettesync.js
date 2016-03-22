@@ -25,11 +25,13 @@ var argv = require('yargs')
   .command('watch', 'Watch for changes and synchronize with cloud')
   .help('h')
   .alias('h', 'help')
-  .count('event-flags')
+  .boolean('event-flags')
   .alias('x', 'event-flags')
-  .describe('x', 'Print event flags')
-  .count('trace')
+  .boolean('x', 'Print event flags')
+  .default('x', true)
+  .boolean('trace')
   .alias('t', 'trace')
+  .default('t', false)
   .describe('t', 'Trace more implementation output')
   // .alias('m', 'monitor')
   // .describe('m', 'Manually set watch monitor implementation.')
@@ -64,6 +66,7 @@ appEvents.on(actions.DOWNLOADING, function(file) {
 
 if (command == 'setup') {
   setup();
+
 } else if (command == 'watch') {
   isSetup()
     .then(found => {
@@ -134,6 +137,7 @@ function setup() {
               };
 
               saveSetup(prefs);
+              process.exit(0);
             })
             .catch(err => {
               error('Permisson rejected. Auth code wrong.');
