@@ -53,9 +53,11 @@ export default class Watcher extends EventEmitter {
             file.payload.isDir = file.isDir;
             return file;
           });
+
         stream.onEnd(() => {
           this.emit('index-created');
         });
+
         return stream;
       })
       .flatMap(file => this._enrichChange(file))
@@ -63,13 +65,14 @@ export default class Watcher extends EventEmitter {
   }
 
   getChangesSince(date) {
-    log.debug(`Searching for changes since %s for %s`, date, this.directory);
-    log.debug(date);
+    log.info(`Searching for changes since %s for %s`, date, this.directory);
     listChanges(this.directory, date).flatMap(file => {
         log.debug('Detected offline change %s', file.path);
         let shell = prepareShellStream(file);
+
         shell.onEnd(() => {
           this.emit('changes-since-done');
+
         });
         return shell;
       })
@@ -95,6 +98,7 @@ export default class Watcher extends EventEmitter {
     return addToIndex(file, this.directory)
       .flatMap(() => {
         log.trace('Index updated for %s', file.path);
+
         file.timestamp = new Date();
         return file;
       });
@@ -110,6 +114,7 @@ export default class Watcher extends EventEmitter {
   _getWatcherStream() {
     if (this.type == 'Linux' || this.type == 'shell') {
       log.debug('Using ShellWatcher to observe directory changes');
+
       this.watcher = new ShellWatcher({
         directory: this.directory
       });
@@ -121,6 +126,7 @@ export default class Watcher extends EventEmitter {
 
     } else if (this.type == 'fswatch' || this.type == 'Darwin') {
       log.debug('Using FsWatchWatcherOsx to observe directory changes');
+
       this.watcher = new FsWatchWatcherOsx({
         directory: this.directory
       });
