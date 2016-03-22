@@ -4,10 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "DEBUG=bean:app*,omelette:*,-*:trace* ./node_modules/.bin/babel-node src/main.js",
-    "trace": "DEBUG=bean:app*,omelette:* ./node_modules/.bin/babel-node src/main.js",
-    "bin": "DEBUG=omelette:* ./node_modules/.bin/babel-node src/cli/omelettesync",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "DEBUG=bean:app*,omelette:*,-*:trace* ./node_modules/.bin/babel-node src/cli/omelettesync.js",
+    "trace": "DEBUG=bean:app*,omelette:* ./node_modules/.bin/babel-node src/cli/omelettesync.js",
+    "bin": "./node_modules/.bin/babel-node src/cli/omelettesync.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "watch": "babel --watch src --out-dir lib --source-maps inline --copy-files",
+    "build": "babel src --out-dir lib --source-maps inline --copy-files"
   },
   "author": "Andrin Bertschi",
   "license": "ISC",
@@ -42,7 +44,10 @@
     "yargs": "^4.3.2"
   },
   "devDependencies": {
+    "babel-cli": "^6.6.5",
+    "browserify": "^13.0.0",
     "gulp": "^3.9.1",
-    "gulp-concat": "^2.6.0"
+    "gulp-concat": "^2.6.0",
+    "node-module-concat": "^1.2.0"
   }
 }

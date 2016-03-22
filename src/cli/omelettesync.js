@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+var regeneratorRuntime = require('babel-regenerator-runtime');
+
 import colors from 'colors';
 import googleAuth from '../cloud/drive/google-auth.js';
 import readline from 'readline';
@@ -9,6 +11,7 @@ import prompt from 'prompt'
 import boot from './boot.js';
 import mkdirp from 'mkdirp'
 import appEvents, {actions} from '../events.js'
+
 
 const CLI_SETUP = 'cli-setup';
 const HOME_FOLDER = (process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE);

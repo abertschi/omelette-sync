@@ -195,7 +195,7 @@ export default class SyncManager extends EventEmitter {
     } else {
       log.info('[Upload] Uploading file %s', targetPath);
 
-      let upstream = this._createReadStream(file.path, error);
+      let upstream = this._createReadStream(file.path, reject);
       promise = provider.upload(upstream, targetPath);
     }
     //TODO: what if 2 folder created in one request? not handled so far

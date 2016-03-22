@@ -18,7 +18,7 @@ class StorageProvider {
 
   postMove(file, response) {}
 
-  remove(location);
+  remove(location) {}
 
   postRemove(file, response) {}
 

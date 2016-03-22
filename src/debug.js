@@ -44,7 +44,7 @@ function get(namespace, lvl) {
     for (let i = 0; i < args.length; i++) {
       let arg = args[i];
       let push;
-
+ 
       if (isObject(arg) || i > 0) {
         push = util.inspect(arg, false, null, true);
       } else {
