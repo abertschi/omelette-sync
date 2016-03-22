@@ -17,6 +17,7 @@ export default class FsWatchWatcherOsx {
     }
     this.directory = options.directory;
     this.watchSpawn = null;
+    this._username = null;
   }
 
   watch() {
@@ -70,7 +71,8 @@ export default class FsWatchWatcherOsx {
     let moveStream = this._createMoveStream(createBufferdStream(results, 2));
     results = results
       .filter(f => f.action != 'MOVE')
-      .filter(f => this._isInDirectory(f.path));
+      .filter(f => this._isInDirectory(f.path))
+      .doAction(f => log.info('fswatch: %s', f));
 
     let errors = Bacon
       .fromEvent(cmd.stderr, 'data')
@@ -121,7 +123,7 @@ export default class FsWatchWatcherOsx {
   }
 
   _isTrash(location) {
-    const TRASH = `/Users/${username}/.Trash`;
+    const TRASH = `/Users/${this._username}/.Trash`;
     return location.indexOf(TRASH) > -1 ? true : false;
   }
 

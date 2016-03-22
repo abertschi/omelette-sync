@@ -13,7 +13,7 @@ class ClientIndex {
         if (row) {
           log.debug('%s existing in client-index, updating', path);
           return this._update(row, key, path, payload)
-            .flatMap(() => this._updatePath(key, path, row.path));
+            .flatMap(() => this._updatePath(key, path, row.path))
         } else {
           log.debug('%s new in client-index, inserting', path);
           return this._insert(key, path, payload);
@@ -113,11 +113,15 @@ class ClientIndex {
 
     return Bacon.fromNodeCallback(db, 'all', SELECT_BY_PATH, pathOrigin + '%')
       .flatMap(rows => {
+        if (!rows || !rows.length) {
+          return;
+        }
         return Bacon.fromArray(rows)
           .flatMap(row => {
             let newPath = row.path.replace(pathOrigin, path);
             return this._update(row, row.key, newPath);
-          });
+          })
+          .fold([], (element, array) => {});
       });
   }
 

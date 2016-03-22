@@ -82,7 +82,11 @@ export default class Watcher extends EventEmitter {
 
   watch() {
     return this._getWatcherStream()
-      .flatMap(file => this._enrichChange(file))
+      .flatMap(file => {
+        log.trace('Got %s %s from getWatcherStream', file.action, file.path);
+        this._enrichChange(file);
+        return file;
+      })
       .onValue(file => this._emitChange(file));
   }
 

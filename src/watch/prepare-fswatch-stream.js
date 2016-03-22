@@ -6,7 +6,7 @@ let log = require('../debug.js')('watcher');
 export default function prepareFsWatchStream(file) {
   return createMetaStream(file)
     .doAction(file => {
-      log.trace('Processing %s with action %s', file.path, file.action);
+      log.info('Processing %s with action %s', file.path, file.action);
     });
 }
 
