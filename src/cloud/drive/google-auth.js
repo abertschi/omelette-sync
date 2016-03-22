@@ -7,9 +7,9 @@ import Q from 'Q';
 import async from 'async';
 import colors from 'colors';
 
-let log = require('../debug.js')('gauth');
+let log = require('../../debug.js')('gauth');
 
-const CLIENT_SECRET = require('./../../client_secret.json');
+const CLIENT_SECRET = require('./client_secret.json');
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
 class GoogleAuth {

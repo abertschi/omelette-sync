@@ -1,5 +1,5 @@
 import colors from 'colors';
-import googleAuth from '../cloud/google-auth.js';
+import googleAuth from '../cloud/drive/google-auth.js';
 import readline from 'readline';
 import Q from 'Q';
 import Bacon from 'baconjs';

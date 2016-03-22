@@ -1,8 +1,9 @@
 import Bacon from 'baconjs';
-import CloudIndex from '../index/cloud-index.js';
+import CloudIndex from '../../index/cloud-index.js';
 
 let cloudIndex = new CloudIndex();
-let log = require('../debug.js')('gdrive');
+
+let log = require('../../debug.js')('gdrive');
 
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 

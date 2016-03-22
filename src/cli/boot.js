@@ -4,7 +4,7 @@ import readline from 'readline';
 import Bacon from 'baconjs';
 import Settings from '../settings.js';
 import SyncManager from '../sync/sync-manager.js';
-import GoogleDrive from '../cloud/google-drive.js';
+import GoogleDrive from '../cloud/drive/google-drive.js';
 
 let log = require('../debug.js')('');
 

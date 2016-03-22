@@ -1,10 +1,12 @@
-import GoogleDriveApi from './google-drive-api.js';
 import fs from 'fs';
-import Settings from './../settings.js';
 import Bacon from 'baconjs';
-import CloudIndex from '../index/cloud-index.js';
+
+import GoogleDriveApi from './google-drive-api.js';
+import Settings from './../../settings.js';
+import CloudIndex from '../../index/cloud-index.js';
 import detectGoogleDriveChange from './detect-google-drive-change';
-let log = require('../debug.js')('gdrive');
+
+let log = require('../../debug.js')('gdrive');
 
 const LAST_PAGE_TOKEN_PREFIX = 'last_page_token_';
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';

@@ -1,13 +1,13 @@
 import fs from 'fs';
 import Bacon from 'baconjs';
-import isNetworkError from './is-network-error.js';
+import isNetworkError from '../is-network-error.js';
 import colors from 'colors';
-import StorageApi from './storage-api.js';
+import StorageApi from '../storage-api.js';
 
 var agent = require('superagent-promise')(require('superagent'));
 var stream = require('stream');
 const mixin = require('es6-class-mixin');
-let log = require('../debug.js')('gdrive');
+let log = require('../../debug.js')('gdrive');
 var google = require('googleapis');
 var path = require('path');
 var Promise = require('bluebird');
