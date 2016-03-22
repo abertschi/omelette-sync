@@ -39,7 +39,6 @@ export default class GoogleDrive {
   }
 
   postUpload(file, response) {
-    log.info('postupload: ', response);
     return Bacon.fromArray(this._flattenTreeToArray(response.properties.tree))
       .flatMap(folder => {
         let payload = {
@@ -104,7 +103,7 @@ export default class GoogleDrive {
   pullChanges() {
     let pageTokenKey;
     let pageToken;
-
+    log.info('Fetcing changes');
     return Bacon.fromPromise(this._getPageTokenKey())
       .flatMap(lastPageTokenKey => {
         pageTokenKey = lastPageTokenKey;

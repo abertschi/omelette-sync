@@ -1,38 +1,63 @@
- var util = require('util')
- import colors from 'colors';
+import colors from 'colors';
+import util from 'util';
+import events from './events.js'
 
- module.exports = function debug(title) {
-   return {
-     error: require('debug')(`omelette:${title}:err`),
-     trace: get(`omelette:${title}:trace`),
-     info: get(`omelette:${title}:info`),
-     debug: get(`omelette:${title}:debug`),
-     msg: get('debug')(`omelette:`)
-   }
- }
+let type = Function.prototype.call.bind(Object.prototype.toString);
 
- function get(title) {
-   let debug = require('debug')(title);
-   return function() {
-     let args = Array.prototype.slice.call(arguments, 0);
-     let options = [];
-     for (let i = 0; i < args.length; i++) {
-       let arg = args[i];
-       let push;
+module.exports = function debug(title) {
+  return {
+    error: error(`omelette:${title}:error`, 'error'),
+    trace: get(`omelette:${title}:trace`, 'trace'),
+    info: get(`omelette:${title}:info`, 'info'),
+    debug: get(`omelette:${title}:debug`, 'debug'),
+    msg: get(`omelette:`, 'msg')
+  }
+}
 
-       if (isObject(arg) || i > 0) {
-         push = util.inspect(arg, false, null, true);
-       } else {
-         push = arg;
-       }
-       options.push(push);
-     }
-     debug.apply(null, options);
-   };
- }
+function emitEvent(lvl, namespace, args) {
+  let msg = util.format.apply(this, args);
+  events.emit(`log_${lvl}`, namespace, msg);
+  events.emit('log_all', lvl, namespace, msg);
+}
 
- var type = Function.prototype.call.bind(Object.prototype.toString);
+function error(namespace, lvl) {
+  let debug = require('debug')(namespace);
 
- function isObject(obj) {
-   return type(obj) === '[object Object]';
- }
+  return function() {
+    let args = Array.prototype.slice.call(arguments, 0);
+    let options = [];
+    for (let i = 0; i < args.length; i++) {
+      let arg = args[i];
+      options.push(colors.red(arg));
+    }
+    emitEvent(lvl, namespace, options);
+    debug.apply(null, options);
+  };
+}
+
+function get(namespace, lvl) {
+  let debug = require('debug')(namespace);
+
+  return function() {
+    let args = Array.prototype.slice.call(arguments, 0);
+    let options = [];
+    for (let i = 0; i < args.length; i++) {
+      let arg = args[i];
+      let push;
+
+      if (isObject(arg) || i > 0) {
+        push = util.inspect(arg, false, null, true);
+      } else {
+        push = arg;
+      }
+      options.push(push);
+    }
+
+    emitEvent(lvl, namespace, options);
+    debug.apply(null, options);
+  };
+}
+
+function isObject(obj) {
+  return type(obj) === '[object Object]';
+}

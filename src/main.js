@@ -12,7 +12,7 @@ import GoogleDrive from './cloud/google-drive.js';
 
 let log = require('./debug.js')('');
 
-const WATCH_HOMEDIR = '/Users/abertschi/Dropbox/';
+const WATCH_HOMEDIR = '/Users/abertschi/Dropbox/tmp';
 let watcher;
 let lastrun;
 let initDone;
@@ -23,7 +23,6 @@ Settings.unmarshall('lastrun')
 .then(() => Settings.unmarshall('initdone'))
 .then(value => initDone = value)
 .then(() => {
-  log.info(initDone, lastrun);
   if (lastrun && initDone) {
     lastrun = new Date(lastrun);
     init = false;
@@ -37,7 +36,7 @@ Settings.unmarshall('lastrun')
   log.trace('Got Google Auth Bundle', bundle);
 
   let drive = new GoogleDrive({
-    auth: bundle.auth,
+    auth: bundle,
     mountDir: '/omelettes/'
   });
 
@@ -45,7 +44,7 @@ Settings.unmarshall('lastrun')
     providers: [drive],
     watchHome: WATCH_HOMEDIR,
   });
-  manager.start();
+  manager.startWatching();
 
   watcher = new Watcher({
     directory: WATCH_HOMEDIR,
@@ -67,14 +66,12 @@ Settings.unmarshall('lastrun')
   });
 
   watcher.on('change', change => {
-    log.debug('Change [%s]: %s %s (%s)', change.action, change.path, change.pathOrigin ? `(from ${change.pathOrigin})` : '', change.id || '-');
     manager.pushUpload(change);
   });
 });
 
 process.on('SIGINT', function() {
   let lastrun = new Date();
-  log.info('Setting lastrun to %s', lastrun);
   Settings.marshall('lastrun', lastrun);
   watcher.unwatch();
   setTimeout(function() {

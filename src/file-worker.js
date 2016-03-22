@@ -29,8 +29,7 @@ export default class FileWorker {
   }
 
   remove(path) {
-    log.info('Removing %s', path);
-    //return Promise.resolve();
+    log.info('Moving %s to trash', path);
     return trash([path]);
   }
 
@@ -53,7 +52,6 @@ export default class FileWorker {
   exists(path) {
     return new Promise((resolve, reject) => {
       fs.access(path, fs.F_OK, (err) => {
-        log.info(err);
         if (err) resolve(false);
         else resolve(true);
       });
@@ -76,7 +74,6 @@ export default class FileWorker {
             i++;
             return this._getDownloadPath(base, i).then(resolve).catch(reject);
           } else {
-            log.info('Get download path: %s', path);
             return resolve(path);
           }
         }).catch(reject);
@@ -93,8 +90,8 @@ export default class FileWorker {
           return getFileStats(location)
             .flatMap(fileStats => {
               let mTime = new Date(fileStats.stats.mtime).getTime();
-              log.info('disk timestamp: %s', mTime);
-              log.info('cloud timestamp: %s', timestamp);
+              log.trace('disk timestamp: %s', mTime);
+              log.trace('cloud timestamp: %s', timestamp);
 
               if (mTime < timestamp) {
                 return Bacon.fromPromise(this.remove(location));
