@@ -7,7 +7,6 @@ class Settings {
   get(key) {
     const SQL = 'SELECT value from SETTINGS where key=?';
     return Bacon.fromNodeCallback(db, 'get', SQL, key)
-      .doAction((row) => log.info('Settings:get %s', row))
       .flatMap(row => row && row.value ? row.value : null)
       .doAction(value => log.trace('get %s=%s', key, value))
       .toPromise();

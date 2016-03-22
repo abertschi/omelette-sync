@@ -242,13 +242,11 @@ export default class GoogleDriveApi extends StorageApi {
 
     return Bacon.fromPromise(this.createFolder(dirname))
       .flatMap(folders => {
-        log.debug('folder created', folders);
         let searchArgs = {
           withParentId: folders.properties.id
         };
         return Bacon.fromPromise(this.search(basename, searchArgs))
           .flatMap(search => {
-            log.debug('search result', search);
             if (search && search.files && search.files.length) {
               let fileId = search.files[0].id;
               return this.uploadExisting(source, fileId);
@@ -258,7 +256,6 @@ export default class GoogleDriveApi extends StorageApi {
             }
           })
           .flatMap(uploaded => {
-            log.trace(uploaded);
             let tree = folders.properties.tree;
             let child = this._getMostInnerChild(tree);
             child.child = {

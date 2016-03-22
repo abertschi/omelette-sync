@@ -57,11 +57,11 @@ if (argv.trace) {
 }
 
 appEvents.on(actions.UPLOADING, function(file) {
-  console.log('%s: %s', file.action, file.path);
+  console.log('UP: %s: %s', file.action, file.path);
 });
 
 appEvents.on(actions.DOWNLOADING, function(file) {
-  console.log('%s: %s', file.action, file.path);
+  console.log('DOWN: %s: %s', file.action, file.path);
 });
 
 if (command == 'setup') {
@@ -136,8 +136,9 @@ function setup() {
                 mountDir: dirs.cloud
               };
 
-              saveSetup(prefs);
-              process.exit(0);
+              saveSetup(prefs)
+              .then(() => process.exit(0));
+
             })
             .catch(err => {
               error('Permisson rejected. Auth code wrong.');
@@ -161,7 +162,7 @@ function getSetup() {
 }
 
 function saveSetup(setup) {
-  Settings.marshall(CLI_SETUP, setup);
+  return Settings.marshall(CLI_SETUP, setup);
 }
 
 function log(msg) {

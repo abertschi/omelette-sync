@@ -165,8 +165,6 @@ export default class SyncManager extends EventEmitter {
 
   _doUpload(provider, file, error) {
     let promise;
-
-    log.info('Uploading %s %s', file.action, file.path);
     switch (file.action) {
       case 'ADD':
       case 'CHANGE':
