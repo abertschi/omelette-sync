@@ -11,8 +11,15 @@ export default class ChangeRunner {
 
   constructor(options = {}) {
     this.queue = options.queue;
+
     this.callback = options.callback;
     this.callbackObject = options.callbackObject;
+
+    // hooks
+    this.beforeChange = options.beforeChange;
+    this.afterChange = options.afterChange;
+    this.afterAll = options.afterAll;
+
     this.concurrencyLimit = options.concurrencyLimit || 1;
     this.checkFrequency = options.checkFrequency || 100;
     this._pendingChanges = [];
@@ -51,10 +58,16 @@ export default class ChangeRunner {
       }
 
       if (change) {
+        if (this.beforeChange) {
+          this.beforeChange.apply(this.callbackObject, [change]);
+        }
         let promise = this.callback.apply(this.callbackObject, [change]);
         if (promise) {
           this._markAsDoneIfNoError(promise, change);
         } else {
+          if (this.afterChange) {
+            this.afterChange.apply(this.callbackObject, [change]);
+          }
           this._changesActive--;
         }
       } else {
@@ -77,6 +90,10 @@ export default class ChangeRunner {
           this.queue.flagAsDone(change);
         }
         this._changesActive--;
+      }).then(() => {
+        if (this.afterChange) {
+          this.afterChange.apply(this.callbackObject, [change]);
+        }
       });
   }
 
@@ -84,6 +101,9 @@ export default class ChangeRunner {
     this.queue.on('empty', () => {
       this._running = false;
       log.debug('All changes done. Stop checking until new events');
+      if (this.afterAll) {
+        this.afterAll.apply(this.callbackObject, []);
+      }
     });
 
     this.queue.on('not-empty', () => {

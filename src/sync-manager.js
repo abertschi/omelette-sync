@@ -6,9 +6,9 @@ import fs from 'fs';
 import ChangeRunner from './change-runner.js';
 import FileWorker from './file-worker.js';
 import Settings from './settings.js';
-import events, {
+import appEvents, {
   actions
-} from './events';
+} from './events.js';
 
 const EventEmitter = require('events');
 
@@ -62,36 +62,73 @@ export default class SyncManager extends EventEmitter {
     this._restoringLastHistory();
   }
 
-  start() {
+  startWatching() {
+    this.startUpload();
+    this.startDownload();
+    this._startFetchInterval();
+  }
+
+  startUpload() {
     if (!this._uploadRunner) {
       this._uploadRunner = new ChangeRunner({
         queue: this._uploadQueue,
         callback: this.nextUpload,
         callbackObject: this,
+        beforeChange: (change) => {
+          appEvents.emit(actions.UPLOADING, change);
+        },
+        afterChange: change => {
+          appEvents.emit(actions.UPLOAD_DONE, change);
+        },
+        afterAll: () => {
+          appEvents.emit(actions.UPLOADS_DONE);
+        },
         concurrencyLimit: 1,
         checkFrequency: 300
       });
+    }
+    this._uploadRunner.start();
+  }
+
+  startDownload() {
+    if (!this._downloadRunner) {
       this._downloadRunner = new ChangeRunner({
         queue: this._downloadQueue,
         callback: this.nextDownload,
         callbackObject: this,
+        beforeChange: (change) => {
+          appEvents.emit(actions.DOWNLOADING, change);
+        },
+        afterChange: change => {
+          appEvents.emit(actions.DOWNLOAD_DONE, change);
+        },
+        afterAll: () => {
+          appEvents.emit(actions.DOWNLOADS_DONE, change);
+        },
         concurrencyLimit: 1
       });
     }
-    this._uploadRunner.start();
     this._downloadRunner.start();
-    this._startFetchInterval();
   }
 
-  stop() {
-    this._uploadRunner.stop();
+  stopDownload() {
     this._downloadRunner.stop();
+  }
+
+  stopUpload() {
+    this._uploadRunner.stop();
+  }
+
+  stopWatching() {
     this._stopFetchInterval();
+    this.stopUpload();
+    this.stopDownload();
   }
 
   pushUpload(change) {
     if (change && change.path && !change.path.endsWith(DOWNLOAD_SUFFIX)) {
       if (!change.pathOrigin || change.pathOrigin && !change.pathOrigin.endsWith(DOWNLOAD_SUFFIX)) {
+        appEvents.emit(actions.DETECT_UPLOAD, change);
         this._uploadQueue.push(change);
       }
     }
@@ -104,20 +141,16 @@ export default class SyncManager extends EventEmitter {
       let isRelevant = this._downloadHistory.get(key) == null;
 
       if (isRelevant) {
-        this.emit(actions.UPLOADING, change);
-
         let promise = this._doUpload(provider, change, reject);
         if (!promise) {
           reject();
         } else {
           promise.then(then => {
-              this.emit(actions.UPLOAD_DONE, change);
               this._addUploadToHistory(provider, change)
                 .then(() => resolve(then))
                 .catch(reject);
             })
             .catch(err => {
-              this.emit(actions.UPLOAD_DONE, change);
               reject(err)
             });
         }
@@ -204,13 +237,10 @@ export default class SyncManager extends EventEmitter {
     }
 
     if (promise) {
-      this.emit(actions.DOWNLOADING, file);
       promise.then(then => {
-          this.emit(actions.DOWNLOAD_DONE, file);
           return then;
         })
         .catch(error => {
-          this.emit(actions.DOWNLOAD_DONE, file);
           return error;
         });
     }
@@ -246,6 +276,7 @@ export default class SyncManager extends EventEmitter {
         break;
       }
     }
+    log.debug('Check if %s is relevant to download: %s', file.path, !found);
     return !found;
   }
 
@@ -260,7 +291,7 @@ export default class SyncManager extends EventEmitter {
             this._uploadHistory.set(providerId, []);
 
             return Bacon.fromPromise(provider.pullChanges())
-              .doAction(changes => log.info('Provider %s fetched %s changes', provider.providerName(), changes.length))
+              .doAction(changes => log.debug('Provider %s fetched %s changes', provider.providerName(), changes.length))
               .flatMap(changes => {
                 return Bacon.fromArray(changes)
                   .filter(change => this._filterPullChange(change, uploads))
@@ -275,13 +306,16 @@ export default class SyncManager extends EventEmitter {
                  * Store provider in field 'provider'
                  * so that download process can identify corresponding provider.
                  */
+                log.debug('Got change %s', change);
+
+                appEvents.emit(actions.DETECT_DOWNLOAD, change);
                 change.provider = providerId;
                 this._downloadQueue.push(change);
               })
           });
       });
 
-    fetch.onError(err => log.error('Error occurred in fetching for changes', err));
+    fetch.onError(err => log.error('Error occurred in fetching for changes', err, err.stack));
     return new Promise((resolve, reject) => {
       fetch.onEnd(resolve);
     });
@@ -416,9 +450,6 @@ export default class SyncManager extends EventEmitter {
       .then(hist => {
         this._downloadHistory = new Map(hist);
       }).catch(log.error);
-
-    log.info('download hist: ', this._downloadHistory);
-    log.info('upload hist: ', this._uploadHistory);
 
     process.on('SIGINT', () => {
       Settings.marshall(UPLOAD_HIST, this._uploadHistory);

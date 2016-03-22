@@ -3,15 +3,23 @@ const EventEmitter = require('events');
 let events = new EventEmitter();
 
 const actions = {
-  ERROR: 'ERROR',
-  CLIENT_CHANGE: 'CLIENT_CHANGE',
-  CLOUD_CHANGE: 'CLOUD_CHANGE',
-  UPLOADING: 'UPLOADING',
-  UPLOAD_DONE: 'UPLOAD_DONE',
-  DOWNLOADING: 'DOWNLOADING',
-  UPLOADS_DONE: 'UPLOADS_DONE',
-  DOWNLOAD_DONE: 'DOWNLOAD_DONE',
-  DOWNLOADS_DONE: 'DOWNLOADS_DONE'
+
+  LOG_ERROR: 'log_error',
+  LOG_INFO: 'log_info',
+  LOG_TRACE: 'log_trace',
+  LOG_ALL: 'log_all',
+
+  DETECT_UPLOAD: 'detect_upload',
+  UPLOADING: 'uploading',
+  UPLOAD_DONE: 'upload_done',
+  UPLOAD_CANCEL: 'upload_cancel',
+  UPLOADS_DONE: 'uploads_done',
+
+  DETECT_DOWNLOAD: 'detect_download',
+  DOWNLOADING: 'downloading',
+  DOWNLOAD_DONE: 'download_done',
+  DOWNLOAD_CANCEL: 'download_cancel',
+  DOWNLOADS_DONE: 'downloads_done'
 }
 
 export {
