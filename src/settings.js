@@ -6,9 +6,10 @@ class Settings {
 
   get(key) {
     const SQL = 'SELECT value from SETTINGS where key=?';
-    return Bacon.fromNodeCallback(db, 'get', SQL, [key])
+    return Bacon.fromNodeCallback(db, 'get', SQL, key)
+      .doAction((row) => log.info('Settings:get %s', row))
       .flatMap(row => row && row.value ? row.value : null)
-      .doAction(value => log.trace('set %s=%s', key, value))
+      .doAction(value => log.trace('get %s=%s', key, value))
       .toPromise();
   }
 
@@ -33,12 +34,12 @@ class Settings {
     return Bacon.fromPromise(this.get(key))
       .flatMap(existing => {
         if (existing) {
-          return Bacon.fromNodeCallback(db, 'get', UPDATE, [value, key])
+          return Bacon.fromNodeCallback(db, 'get', UPDATE, value, key)
         } else {
-          return Bacon.fromNodeCallback(db, 'get', INSERT, [key, value]);
+          return Bacon.fromNodeCallback(db, 'get', INSERT, key, value);
         }
       })
-      .doAction(value => log.trace('set %s=%s', key, value))
+      .doAction(() => log.trace('set %s=%s', key, value))
       .toPromise();
   }
 }
