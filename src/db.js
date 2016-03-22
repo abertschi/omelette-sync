@@ -1,12 +1,13 @@
 var sqlite3 = require('sqlite3');
 let log = require('./debug.js')('db');
 var fs = require('fs');
+let path = require('path');
 
 let noSchema = false;
 
 import appData from './util/appdata-dir.js';
 
-const DB_PATH = appData() + 'omelettesync.db';
+const DB_PATH = path.join(appData(), 'omelettesync.db');
 
 try {
   fs.readFileSync(DB_PATH);
