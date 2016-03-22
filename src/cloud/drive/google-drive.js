@@ -10,7 +10,6 @@ let log = require('../../debug.js')('gdrive');
 
 const LAST_PAGE_TOKEN_PREFIX = 'last_page_token_';
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
-const BACON_SEQUENTIAL_WAIT = 1000;
 
 export default class GoogleDrive {
 
@@ -21,7 +20,7 @@ export default class GoogleDrive {
     });
 
     this.cloudIndex = new CloudIndex();
-    this._driveId;
+    this._cachedDriveId;
   }
 
   accountId() {
@@ -105,17 +104,19 @@ export default class GoogleDrive {
   pullChanges() {
     let pageTokenKey;
     let pageToken;
-    log.info('Fetcing changes');
+
     return Bacon.fromPromise(this._getPageTokenKey())
       .flatMap(lastPageTokenKey => {
         pageTokenKey = lastPageTokenKey;
+
         return Bacon.fromPromise(Settings.get(lastPageTokenKey))
           .flatMap(lastPageToken => {
+
             return Bacon.fromPromise(this.drive.getUserId())
               .flatMap(providerId => {
+
                 return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
                   .flatMap(pull => {
-                    log.trace(pull);
                     pageToken = pull.startPageToken;
                     /*
                      * changes.reverse()
@@ -142,8 +143,8 @@ export default class GoogleDrive {
         return changes;
       })
       .flatMap(changes => {
-        Settings.set(pageTokenKey, pageToken)
-        return changes;
+        return Bacon.fromPromise(Settings.set(pageTokenKey, pageToken))
+          .flatMap(() => changes);
       })
       .toPromise();
   }
@@ -151,15 +152,16 @@ export default class GoogleDrive {
   _buildChange(response, file) {
     file.isDir = this._isDir(response.mimeType);
     file.timestamp = response.timestamp;
-      file.payload = {
-        id: response.id,
-        name: response.name,
-        parentId: response.parentId,
-        isDir: response.isDir,
-        md5Checksum: response.md5Checksum,
-        timestamp: response.timestamp
-      };
-      log.debug('Building change to download: %s', file);
+    file.payload = {
+      id: response.id,
+      name: response.name,
+      parentId: response.parentId,
+      isDir: response.isDir,
+      md5Checksum: response.md5Checksum,
+      timestamp: response.timestamp
+    };
+
+    log.debug('Building change to download: %s', file);
     return file;
   }
 
@@ -194,17 +196,18 @@ export default class GoogleDrive {
       name: tree.name,
       parentId: parentId
     });
+
     return tree.child ? this._flattenTreeToArray(tree.child, tree.id, directories) : directories;
   }
 
   _getPageTokenKey() {
-    return Bacon.once(this._driveId)
+    return Bacon.once(this._cachedDriveId)
       .flatMap(cachedId => {
         if (!cachedId) {
           return Bacon.fromPromise(this.drive.getUserId())
             .flatMap(id => {
-              this._driveId = LAST_PAGE_TOKEN_PREFIX + id;
-              return this._driveId;
+              this._cachedDriveId = LAST_PAGE_TOKEN_PREFIX + id;
+              return this._cachedDriveId;
             })
         } else {
           return cachedId;

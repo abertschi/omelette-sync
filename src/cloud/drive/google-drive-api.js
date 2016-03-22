@@ -138,7 +138,6 @@ export default class GoogleDriveApi extends StorageApi {
           return this._request(this.drive.changes, 'list', options);
         })
         .flatMap(response => {
-          log.info('got response', response);
           if (!pages.changes) {
             pages.changes = []
           }
@@ -160,7 +159,6 @@ export default class GoogleDriveApi extends StorageApi {
             let file = change.file;
             let action;
             let parentId;
-            console.log(change);
 
             if (change.removed || file && (file.trashed || file.explicitlyTrashed)) {
               action = 'REMOVE';
