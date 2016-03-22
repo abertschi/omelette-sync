@@ -1,9 +1,9 @@
-import Watcher from '../watcher.js';
+import Watcher from '../watch/watcher.js';
 import colors from 'colors';
 import readline from 'readline';
 import Bacon from 'baconjs';
 import Settings from '../settings.js';
-import SyncManager from '../sync-manager.js';
+import SyncManager from '../sync/sync-manager.js';
 import GoogleDrive from '../cloud/google-drive.js';
 
 let log = require('../debug.js')('');

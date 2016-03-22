@@ -2,26 +2,26 @@ import chokidar from 'chokidar';
 import fs from 'fs';
 import colors from 'colors';
 import Bacon from 'baconjs';
-import db from './db.js';
-import addToIndex from './index/add-to-index.js';
+import db from '../db.js';
+import addToIndex from '../index/add-to-index.js';
 import prepareFsWatchStream from './prepare-fswatch-stream.js';
 import prepareShellStream from './prepare-shell-stream.js';
-import ShellWatcher from './watcher/shell-watcher.js';
-import FsWatchWatcherOsx from './watcher/fswatch-watcher-osx.js';
-import mergeObjects from './util/merge-objects.js';
+import ShellWatcher from './shell-watcher.js';
+import FsWatchWatcherOsx from './fswatch-watcher-osx.js';
+import mergeObjects from '../util/merge-objects.js';
 import os from 'os';
-import clientIndex from './index/client-index.js';
+import clientIndex from '../index/client-index.js';
 import EventEmitter from 'events';
 
 import {
   createBufferdStream
-} from './util/stream-helpers.js';
+} from '../util/stream-helpers.js';
 import {
   listChanges,
   listRecursive
-} from './offline/shell-list-files.js'
+} from '../offline/shell-list-files.js'
 
-let log = require('./debug.js')('watcher');
+let log = require('../debug.js')('watcher');
 
 export default class Watcher extends EventEmitter {
 
@@ -132,6 +132,6 @@ export default class Watcher extends EventEmitter {
   }
 
   _parepareDirectory(dir) {
-    return dir.endsWith('/') ? dir.substring(0, dir.length -1) : dir;
+    return dir.endsWith('/') ? dir.substring(0, dir.length - 1) : dir;
   }
 }

@@ -1,4 +1,4 @@
-import Watcher from './watcher.js';
+import Watcher from './watch/watcher.js';
 import colors from 'colors';
 import readline from 'readline';
 import Q from 'Q';
@@ -6,7 +6,7 @@ import Bacon from 'baconjs';
 import fs from 'fs';
 import Settings from './settings.js';
 
-import SyncManager from './sync-manager.js';
+import SyncManager from './sync/sync-manager.js';
 import getGoogleAuthToken from './cli/get-google-auth-token.js';
 import GoogleDrive from './cloud/google-drive.js';
 

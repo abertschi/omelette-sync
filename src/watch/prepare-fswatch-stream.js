@@ -1,7 +1,7 @@
 import Bacon from 'baconjs';
-import existsOnDisk from './util/exists-on-disk.js';
-import getFileStats from './util/get-file-stats.js';
-let log = require('./debug.js')('watcher');
+import existsOnDisk from '../util/exists-on-disk.js';
+import getFileStats from '../util/get-file-stats.js';
+let log = require('../debug.js')('watcher');
 
 export default function prepareFsWatchStream(file) {
   return createMetaStream(file)

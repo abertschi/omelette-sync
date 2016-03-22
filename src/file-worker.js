@@ -11,8 +11,6 @@ export default class FileWorker {
     this.downloadSuffix = options.downloadSuffix || '.syncdownload';
   }
 
-
-
   move(fromPath, toPath, overwrite=false) {
     return new Promise((resolve, reject) => {
       fs.exists(toPath, (exists) => {

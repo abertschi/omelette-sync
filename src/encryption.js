@@ -19,11 +19,11 @@
       }
 
       decrypt(text) {
-        let decypt = crypto.createDecipher(this.algorithm, this.password);
-        decypt.update(text, 'utf8', 'base64');
-        return decypt.final('base64')
-      }
-      // manually with openssl: openssl enc -in bean.txt -d -aes-256-cbc -out bean.done.txt -nosalt
+          let decypt = crypto.createDecipher(this.algorithm, this.password);
+          decypt.update(text, 'utf8', 'base64');
+          return decypt.final('base64')
+        }
+        // manually with openssl: openssl enc -in bean.txt -d -aes-256-cbc -out bean.done.txt -nosalt
       encryptStream(stream, errorHandler) {
         let encrypt = crypto.createCipher(this.algorithm, this.password);
         return stream.on('error', err => {

@@ -1,10 +1,10 @@
 import ChangeQueue from './change-queue.js';
-import isNetworkError from './cloud/is-network-error.js';
-let log = require('./debug.js')('runner');
+import isNetworkError from '../cloud/is-network-error.js';
+let log = require('../debug.js')('runner');
 import Bacon from 'baconjs';
-import Encryption from './encryption.js';
+import Encryption from '../encryption.js';
 import fs from 'fs';
-import Providers from './cloud/providers.js';
+import Providers from '../cloud/providers.js';
 let util = require('util');
 
 export default class ChangeRunner {

@@ -1,13 +1,13 @@
 import Bacon from 'baconjs';
-import db from './db.js';
-import clientIndex from './index/client-index.js';
-import mergeObjects from './util/merge-objects.js';
+import db from '../db.js';
+import clientIndex from '../index/client-index.js';
+import mergeObjects from '../util/merge-objects.js';
 
 import {
   list
-} from './offline/shell-list-files.js'
+} from '../offline/shell-list-files.js'
 
-let log = require('./debug.js')('watcher');
+let log = require('../debug.js')('watcher');
 
 export default function prepareShellStream(file) {
 

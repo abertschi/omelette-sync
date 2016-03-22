@@ -1,18 +1,18 @@
 import ChangeQueue from './change-queue.js';
-import isNetworkError from './cloud/is-network-error.js';
+import isNetworkError from '../cloud/is-network-error.js';
 import Bacon from 'baconjs';
-import Encryption from './encryption.js';
+import Encryption from '../encryption.js';
 import fs from 'fs';
 import ChangeRunner from './change-runner.js';
-import FileWorker from './file-worker.js';
-import Settings from './settings.js';
+import FileWorker from '../file-worker.js';
+import Settings from '../settings.js';
 import appEvents, {
   actions
-} from './events.js';
+} from '../events.js';
 
 const EventEmitter = require('events');
 
-let log = require('./debug.js')('syncmanager');
+let log = require('../debug.js')('syncmanager');
 
 const UPLOAD_CONCURRENCY_LIMIT = 1;
 const DOWNLOAD_CONCURRENCY_LIMIT = 1;

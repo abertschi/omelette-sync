@@ -1,9 +1,9 @@
-import db from './db.js';
+import db from '../db.js';
 import Bacon from 'baconjs';
 import EventEmitter from 'events';
 
 var Promise = require('bluebird');
-let log = require('./debug.js')('queue');
+let log = require('../debug.js')('queue');
 
 export default class ChangeQueue extends EventEmitter {
 
