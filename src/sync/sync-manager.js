@@ -103,7 +103,7 @@ export default class SyncManager extends EventEmitter {
           appEvents.emit(actions.DOWNLOAD_DONE, change);
         },
         afterAll: () => {
-          appEvents.emit(actions.DOWNLOADS_DONE, change);
+          appEvents.emit(actions.DOWNLOADS_DONE);
         },
         concurrencyLimit: 1
       });
@@ -279,7 +279,7 @@ export default class SyncManager extends EventEmitter {
     let location = this._prefixWithWatchHome(file.path);
 
     log.info('[Download] Adding directory %s', location);
-    promise = this._fileWorker.createDirectory(location);
+    return this._fileWorker.createDirectory(location);
   }
 
   _downloadMove(file) {
