@@ -145,7 +145,8 @@ export default class SyncManager extends EventEmitter {
         if (!promise) {
           reject();
         } else {
-          promise.then(then => {
+          promise
+            .then(then => {
               this._addUploadToHistory(provider, change)
                 .then(() => resolve(then))
                 .catch(reject);
@@ -163,46 +164,70 @@ export default class SyncManager extends EventEmitter {
   }
 
   _doUpload(provider, file, error) {
-    let targetPath = file.path.replace(this.watchHome, '/');
     let promise;
 
     log.info('Uploading %s %s', file.action, file.path);
     switch (file.action) {
       case 'ADD':
       case 'CHANGE':
-        if (file.isDir) {
-          log.info('[Upload] Creating folder %s', targetPath);
-          promise = provider.createFolder(targetPath);
-        } else {
-          log.info('[Upload] Uploading file %s', targetPath);
-          let upstream = this._createReadStream(file.path, error);
-          promise = provider.upload(upstream, targetPath);
-        }
-        //TODO: what if 2 folder created in one request? not handled so far
-        promise = Bacon
-          .fromPromise(promise)
-          .flatMap(done => Bacon.fromPromise(provider.postUpload(file, done)).flatMap(() => done))
-          .toPromise();
+        promise = this._uploadAddOrChange(provider, file, error);
         break;
       case 'MOVE':
-        let fromPath = file.pathOrigin.replace(this.watchHome, '');
-        log.info('[Upload] Moving %s to %s', fromPath, targetPath);
-        promise = Bacon
-          .fromPromise(provider.move(fromPath, targetPath))
-          .flatMap(done => Bacon.fromPromise(provider.postMove(file, done)).flatMap(() => done))
-          .toPromise();
+        promise = this._uploadMove(provider, file, error);
         break;
       case 'REMOVE':
-        log.info('[Upload] Removing %s', targetPath);
-        promise = Bacon
-          .fromPromise(provider.remove(targetPath))
-          .flatMap(done => Bacon.fromPromise(provider.postRemove(file, done)).flatMap(() => done))
-          .toPromise();
+        promise = this._uploadRemove(provider, file, error);
         break;
       default:
-        log.error('Upload impossible. Unknown change type %s [%s]', file.action, file);
+        promise = Promise.reject('Upload impossible. Unknown change type ' + file.action);
     }
     return promise;
+  }
+
+  _uploadAddOrChange(provider, file, reject) {
+    let promise;
+    let targetPath = this._removeWatchHome(file.path);
+
+    if (file.isDir) {
+      log.info('[Upload] Creating folder %s', targetPath);
+
+      promise = provider.createFolder(targetPath);
+    } else {
+      log.info('[Upload] Uploading file %s', targetPath);
+
+      let upstream = this._createReadStream(file.path, error);
+      promise = provider.upload(upstream, targetPath);
+    }
+    //TODO: what if 2 folder created in one request? not handled so far
+    promise = Bacon
+      .fromPromise(promise)
+      .flatMap(done => Bacon.fromPromise(provider.postUpload(file, done)).flatMap(() => done))
+      .toPromise();
+
+    return promise;
+  }
+
+  _uploadMove(provider, file, reject) {
+    let targetPath = this._removeWatchHome(file.path);
+    let fromPath = this._removeWatchHome(file.pathOrigin);
+
+    log.info('[Upload] Moving %s to %s', fromPath, targetPath);
+
+    return Bacon
+      .fromPromise(provider.move(fromPath, targetPath))
+      .flatMap(done => Bacon.fromPromise(provider.postMove(file, done)).flatMap(() => done))
+      .toPromise();
+  }
+
+  _uploadRemove(provider, file, reject) {
+    let targetPath = this._removeWatchHome(file.path);
+
+    log.info('[Upload] Removing %s', targetPath);
+
+    return Bacon
+      .fromPromise(provider.remove(targetPath))
+      .flatMap(done => Bacon.fromPromise(provider.postRemove(file, done)).flatMap(() => done))
+      .toPromise();
   }
 
   async nextDownload(file) {
@@ -210,25 +235,19 @@ export default class SyncManager extends EventEmitter {
 
     if (file.path) {
       this._addDownloadToHistory(file);
-      let pathPrefixed = this._prefixWithWatchHome(file.path);
 
       if (file.action == 'MOVE' && file.pathOrigin) {
-        log.info('[Download] Moving %s to %s', file.pathOrigin, pathPrefixed);
-        let pathFrom = this._prefixWithWatchHome(file.pathOrigin);
-        promise = this._fileWorker.move(pathFrom, pathPrefixed);
+        promise = this._downloadMove(file);
 
       } else if (file.action == 'REMOVE') {
-        log.info('[Download] Removing %s', pathPrefixed);
-        promise = this._fileWorker.remove(pathPrefixed);
+        promise = this._downloadRemove(file);
 
       } else if (file.action == 'ADD' && file.isDir) {
-        log.info('[Download] Adding directory %s', pathPrefixed);
-        promise = this._fileWorker.createDirectory(pathPrefixed);
+        promise = this._downloadCreateDir(file);
 
       } else if ((file.action == 'ADD' || file.action == 'CHANGE') && file.provider) {
-        log.info('[Download] Adding or updating file %s', pathPrefixed);
-        promise = this._doDownload(file, pathPrefixed);
 
+        promise = this._downloadAddOrChange(file);
       } else {
         log.info('Invalid data %s', file);
       }
@@ -236,19 +255,14 @@ export default class SyncManager extends EventEmitter {
       log.info('Invalid data %s', file);
     }
 
-    if (promise) {
-      promise.then(then => {
-          return then;
-        })
-        .catch(error => {
-          return error;
-        });
-    }
     return promise;
   }
 
-  async _doDownload(file, location) {
+  async _downloadAddOrChange(file) {
+    let location = this._prefixWithWatchHome(file.path);
     let provider = await this._getProviderById(file.provider);
+
+    log.info('[Download] Adding or updating file %s', location);
 
     return new Promise((resolve, reject) => {
       Bacon.fromPromise(this._createWriteStream(location, reject))
@@ -261,23 +275,31 @@ export default class SyncManager extends EventEmitter {
     });
   }
 
+  _downloadCreateDir(file) {
+    let location = this._prefixWithWatchHome(file.path);
+
+    log.info('[Download] Adding directory %s', location);
+    promise = this._fileWorker.createDirectory(location);
+  }
+
+  _downloadMove(file) {
+    let pathTo = this._prefixWithWatchHome(file.path);
+    let pathFrom = this._prefixWithWatchHome(file.pathOrigin);
+
+    log.info('[Download] Moving %s to %s', pathFrom, pathTo);
+    return this._fileWorker.move(pathFrom, pathTo);
+  }
+
+  _downloadRemove(file) {
+    let location = this._prefixWithWatchHome(file.path);
+
+    log.info('[Download] Removing %s', location);
+    return this._fileWorker.remove(location);
+  }
+
   _finishDownload(location, timestamp) {
     log.info(location, timestamp);
     return this._fileWorker.markDownloadAsDone(location, timestamp);
-  }
-
-  _filterPullChange(file, uploads) {
-    let key = this._createHistoryKey(file.action, file.path);
-    let found = false;
-    for (let i = 0; i < uploads.length; i++) {
-      let element = uploads[i];
-      if (key == element.key) {
-        found = true;
-        break;
-      }
-    }
-    log.debug('Check if %s is relevant to download: %s', file.path, !found);
-    return !found;
   }
 
   _fetchChanges() {
@@ -319,6 +341,20 @@ export default class SyncManager extends EventEmitter {
     return new Promise((resolve, reject) => {
       fetch.onEnd(resolve);
     });
+  }
+
+  _filterPullChange(file, uploads) {
+    let key = this._createHistoryKey(file.action, file.path);
+    let found = false;
+    for (let i = 0; i < uploads.length; i++) {
+      let element = uploads[i];
+      if (key == element.key) {
+        found = true;
+        break;
+      }
+    }
+    log.debug('Check if %s is relevant to download: %s', file.path, !found);
+    return !found;
   }
 
   _createHistoryKey(action, location) {
@@ -428,6 +464,7 @@ export default class SyncManager extends EventEmitter {
   _removeWatchHome(location) {
     return location.replace(this.watchHome, '/');
   }
+
 
   _getProvider() {
     // challenges for distribution strategy
