@@ -8,6 +8,7 @@ import Settings from '../settings.js';
 import prompt from 'prompt'
 import boot from './boot.js';
 import mkdirp from 'mkdirp'
+import appEvents, {actions} from '../events.js'
 
 const CLI_SETUP = 'cli-setup';
 const HOME_FOLDER = (process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE);
@@ -21,12 +22,12 @@ var argv = require('yargs')
   .command('watch', 'Watch for changes and synchronize with cloud')
   .help('h')
   .alias('h', 'help')
-  // .count('event-flags')
-  // .alias('x', 'event-flags')
-  // .describe('x', 'Print event flags')
-  // .count('trace')
-  // .alias('t', 'trace')
-  // .describe('t', 'Trace implementation output for debugging.')
+  .count('event-flags')
+  .alias('x', 'event-flags')
+  .describe('x', 'Print event flags')
+  .count('trace')
+  .alias('t', 'trace')
+  .describe('t', 'Trace more implementation output')
   // .alias('m', 'monitor')
   // .describe('m', 'Manually set watch monitor implementation.')
   .demand(1)
@@ -35,6 +36,28 @@ var argv = require('yargs')
   .argv;
 
 let command = argv._;
+
+appEvents.on(actions.LOG_ERROR, function(namespace, msg) {
+  error(namespace +' ' + msg);
+});
+
+console.log(argv);
+
+if (argv.trace) {
+  appEvents.on(actions.LOG_ALL, function(lvl, namespace, msg) {
+    if (lvl == 'msg' || lvl == 'info') {
+        log(msg);
+    }
+  });
+}
+
+appEvents.on(actions.UPLOADING, function(file) {
+  console.log('%s: %s', file.action, file.path);
+});
+
+appEvents.on(actions.DOWNLOADING, function(file) {
+  console.log('%s: %s', file.action, file.path);
+});
 
 if (command == 'setup') {
   setup();
@@ -135,9 +158,9 @@ function saveSetup(setup) {
 }
 
 function log(msg) {
-  console.log('> '.blue + msg);
+  console.log('> '.blue, msg);
 }
 
 function error(msg) {
-  console.log(msg.red);
+  console.log(colors.red(msg));
 }

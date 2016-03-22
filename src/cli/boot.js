@@ -20,13 +20,12 @@ export default function startWatching(auth, watchHome, mountDir) {
     .then(() => Settings.unmarshall('initdone'))
     .then(value => initDone = value)
     .then(() => {
-      log.info(initDone, lastrun);
       if (lastrun && initDone) {
         lastrun = new Date(lastrun);
         init = false;
-        log.info('Continuing work from ' + '%s'.green, lastrun);
+        log.msg('Continuing work from ' + '%s'.green, lastrun);
       } else {
-        log.info('Initializing application');
+        log.msg('Creating index of your files');
       }
     })
     .then(() => {
@@ -40,7 +39,7 @@ export default function startWatching(auth, watchHome, mountDir) {
         providers: [drive],
         watchHome: watchHome,
       });
-      manager.start();
+      manager.startWatching();
 
       watcher = new Watcher({
         directory: watchHome,
@@ -70,7 +69,6 @@ export default function startWatching(auth, watchHome, mountDir) {
 
 process.on('SIGINT', function() {
   let lastrun = new Date();
-  log.info('Setting lastrun to %s', lastrun);
   Settings.marshall('lastrun', lastrun);
   watcher.unwatch();
   setTimeout(function() {
