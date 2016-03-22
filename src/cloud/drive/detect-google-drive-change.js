@@ -1,5 +1,6 @@
 import Bacon from 'baconjs';
 import CloudIndex from '../../index/cloud-index.js';
+import mergeObjects from '../../util/merge-objects.js';
 
 let cloudIndex = new CloudIndex();
 
@@ -12,7 +13,7 @@ export default function detectChange(file, providerId) {
     .doAction(index => log.trace('Determing change type. CHANGE: %s \nINDEX: %s', file, index))
     .flatMap(index => {
 
-      if (file.action == 'REMOVE') return prepareRemoveType(providerId, file);
+      if (file.action == 'REMOVE') return prepareRemoveType(providerId, file, index);
       else {
         if (!index) return prepareAddType(providerId, file);
         else if (index.parentId != file.parentId) return prepareMoveType(providerId, file);
@@ -40,12 +41,13 @@ function prepareAddType(providerId, file) {
     });
 }
 
-function prepareRemoveType(providerId, file) {
+function prepareRemoveType(providerId, file, index) {
   return _getFileNodes(providerId, file.id)
     .flatMap(nodes => {
       let pathOrigin = _nodesToPath(nodes);
       file.action = 'REMOVE';
       file.path = pathOrigin;
+      file.parentId = index ? index.parentId : null;
       log.info('Remove with composed path: %s', pathOrigin);
       return file;
     });

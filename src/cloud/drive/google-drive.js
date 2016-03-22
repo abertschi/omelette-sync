@@ -21,6 +21,7 @@ export default class GoogleDrive {
 
     this.cloudIndex = new CloudIndex();
     this._cachedDriveId;
+    this._drivePageToken;
   }
 
   accountId() {
@@ -125,13 +126,15 @@ export default class GoogleDrive {
                     return Bacon.fromArray(pull.changes.reverse())
                       .flatMap(change => {
                         return detectGoogleDriveChange(change, providerId)
+                          //.filter(file => file.id && file.path && file.name)
                           .flatMap(file => this._buildChange(change, file))
                       })
                       .flatMap(file => {
                         if (file.action == 'REMOVE') {
-                          return this._removeFromIndex(file).flatMap(() => file);
+                          log.info('REMOVING %s from cloudindex', file.path);
+                          return this._removeFromIndex(file.id).flatMap(() => file);
                         } else {
-                          return this._addToIndex(file).flatMap(() => file);
+                          return this._addToIndex(file.id, file.payload).flatMap(() => file);
                         }
                       });
                   });

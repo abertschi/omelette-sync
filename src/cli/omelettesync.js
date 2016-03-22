@@ -10,7 +10,10 @@ import Settings from '../settings.js';
 import prompt from 'prompt'
 import boot from './boot.js';
 import mkdirp from 'mkdirp'
-import appEvents, {actions} from '../events.js'
+import appEvents, {
+  actions
+} from '../events.js'
+import ncp from "copy-paste";
 
 
 const CLI_SETUP = 'cli-setup';
@@ -43,7 +46,7 @@ var argv = require('yargs')
 let command = argv._;
 
 appEvents.on(actions.LOG_ERROR, function(namespace, msg) {
-  error(namespace +' ' + msg);
+  error(namespace + ' ' + msg);
 });
 
 console.log(argv);
@@ -51,7 +54,7 @@ console.log(argv);
 if (argv.trace) {
   appEvents.on(actions.LOG_ALL, function(lvl, namespace, msg) {
     if (lvl == 'msg' || lvl == 'info') {
-        log(msg);
+      log(msg);
     }
   });
 }
@@ -120,6 +123,8 @@ function setup() {
   log('Authorize omelettesync to access your Google Drive account by visiting this url:'.white)
   console.log('\n' + colors.green(url) + '\n');
 
+  ncp.copy(url, function() {})
+
   prompt.get(tokenPrompt, (err, input) => {
     prompt.get([clientDirPrompt, cloudDirPrompt], (err, dirs) => {
 
@@ -137,7 +142,7 @@ function setup() {
               };
 
               saveSetup(prefs)
-              .then(() => process.exit(0));
+                .then(() => process.exit(0));
 
             })
             .catch(err => {

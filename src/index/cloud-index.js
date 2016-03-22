@@ -1,13 +1,13 @@
 import Bacon from 'baconjs';
 import db from '../db.js';
-let log = require('../debug.js')('index');
+let log = require('../debug.js')('cloudindex');
 
 export default class CloudIndex {
 
   constructor() {}
 
   addOrUpdate(provider, key, payload = {}) {
-    const SELECT = 'SELECT payload from CLOUD_INDEX where provider=? and key=?';
+    log.info('addOrUpdate for %s %s %s', provider, key, payload);
     const UPDATE = 'UPDATE CLOUD_INDEX SET payload=? WHERE provider=? and key=?';
     const INSERT = 'INSERT into CLOUD_INDEX(provider, key, payload) VALUES(?, ?, ?)';
 
@@ -18,18 +18,18 @@ export default class CloudIndex {
           let json = JSON.stringify(merged);
 
           log.trace('updating payload from %s to %s: ', stored, merged);
-          return Bacon.fromNodeCallback(db, 'run', UPDATE, json, key, provider);
+          return Bacon.fromNodeCallback(db, 'get', UPDATE, json, key, provider);
         } else {
           log.trace('inserting payload %s: ', payload);
           let json = JSON.stringify(payload);
-          return Bacon.fromNodeCallback(db, 'run', INSERT, provider, key, json);
+          return Bacon.fromNodeCallback(db, 'get', INSERT, provider, key, json);
         }
       });
   }
 
   remove(provider, key) {
     const SQL = 'DELETE from CLOUD_INDEX where provider=? and key=?';
-    return Bacon.fromNodeCallback(db, 'run', SQL, provider, key);
+    return Bacon.fromNodeCallback(db, 'get', SQL, provider, key);
   }
 
   has(provider, key) {
@@ -40,7 +40,7 @@ export default class CloudIndex {
     const SELECT = 'SELECT payload from CLOUD_INDEX where provider=? and key=?';
     return Bacon.fromNodeCallback(db, 'get', SELECT, provider, key)
       .flatMap(row => {
-        return row && row.payload ? this._parseJson(row.payload) : null;
+        return row ? this._parseJson(row.payload) : null;
       });
   }
 

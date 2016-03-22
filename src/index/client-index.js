@@ -1,7 +1,7 @@
 import Bacon from 'baconjs';
 import db from '../db.js';
 import pathUtils from 'path';
-let log = require('../debug.js')('index');
+let log = require('../debug.js')('clientindex');
 
 class ClientIndex {
 
@@ -82,7 +82,7 @@ class ClientIndex {
 
   emptyIndex() {
     const SQL = 'DELETE FROM CLIENT_INDEX WHERE 1';
-    return Bacon.fromCallback(db, 'run', SQL, []);
+    return Bacon.fromCallback(db, 'get', SQL, []);
   }
 
   _insert(key, path, payload) {
