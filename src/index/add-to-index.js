@@ -1,8 +1,9 @@
 import Bacon from 'baconjs';
 import clientIndex from './client-index.js';
-let log = require('../debug.js')('index');
+let log = require('../debug.js')('addToClientIndex');
 
 export default function addToIndex(file) {
+
   switch (file.action) {
     case 'ADD':
     case 'MOVE':
@@ -18,5 +19,6 @@ export default function addToIndex(file) {
     case 'CHANGE':
     default:
       return Bacon.once();
+      break;
   }
 }

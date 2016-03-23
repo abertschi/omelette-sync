@@ -30,7 +30,7 @@ if (noSchema) {
 }
 
 db.on('trace', (f) => {
-  log.trace(f);
+  log.debug(f);
 });
 
 export default db;

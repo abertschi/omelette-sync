@@ -22,6 +22,7 @@ class ClientIndex {
   }
 
   removeByPath(path) {
+    log.debug('remove by path' , path);
     const SQL = 'DELETE from CLIENT_INDEX where path LIKE ?';
     return Bacon.fromNodeCallback(db, 'get', SQL, path + '%');
   }
@@ -99,7 +100,7 @@ class ClientIndex {
     let newPath = path ? path : row.path;
 
     if (payload) {
-      let newPayload = row.payload ? this._mergeObjects(this._parseJson(row.payload.payload), payload) : payload;
+      let newPayload = row.payload ? this._mergeObjects(row.payload, payload) : payload;
       let newPayloadJson = JSON.stringify(newPayload);
       return Bacon.fromNodeCallback(db, 'get', UPDATE_WITH_PAYLOAD, newPath, newPayloadJson, key);
 

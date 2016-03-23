@@ -72,7 +72,9 @@ function prepareRenameType(providerId, file) {
     .flatMap(nodes => {
       file.action = 'MOVE';
       file.pathOrigin = _nodesToPath(nodes);
-      file.path = _nodesToPath(nodes.slice(0, nodes.length - 1)) + file.name;
+      nodes.pop();
+      nodes.push(file.name);
+      file.path = _nodesToPath(nodes);
       return file;
     });
 }

@@ -13,6 +13,11 @@ export default function prepareFsWatchStream(file) {
 function createMetaStream(file) {
   return Bacon.once(file)
     .flatMap(file => {
+      if (!file.payload) {
+        file.payload = {};
+      }
+      file.payload.isDir = file.isDir;
+      
       return existsOnDisk(file.path)
         .flatMap(exists => {
           file.exists = exists;

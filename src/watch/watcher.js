@@ -45,7 +45,9 @@ export default class Watcher extends EventEmitter {
   indexEverything() {
     log.debug(`Creating new index for ${this.directory}`);
 
-    clientIndex.emptyIndex().flatMap(() => {
+    let index = clientIndex
+      .emptyIndex()
+      .flatMap(() => {
         let stream = listRecursive(this.directory)
           .flatMap(file => {
             file.action = 'ADD';
@@ -60,34 +62,38 @@ export default class Watcher extends EventEmitter {
 
         return stream;
       })
-      .flatMap(file => this._enrichChange(file))
-      .onValue(file => this._emitChange(file));
+      .flatMap(file => this._enrichChange(file));
+      index.onValue(file => this._emitChange(file));
+      index.onError(err => log.error(err));
   }
 
   getChangesSince(date) {
     log.info(`Searching for changes since %s for %s`, date, this.directory);
-    listChanges(this.directory, date).flatMap(file => {
+    let changes = listChanges(this.directory, date)
+      .flatMap(file => {
         log.debug('Detected offline change %s', file.path);
         let shell = prepareShellStream(file);
 
         shell.onEnd(() => {
           this.emit('changes-since-done');
-
         });
+
         return shell;
       })
-      .flatMap(file => this._enrichChange(file))
-      .onValue(file => this._emitChange(file));
+      .flatMap(file => this._enrichChange(file));
+
+      changes.onValue(file => this._emitChange(file));
+      changes.onError(err => log.error(err));
   }
 
   watch() {
-    return this._getWatcherStream()
-      .flatMap(file => {
-        log.trace('Got %s %s from getWatcherStream', file.action, file.path);
-        this._enrichChange(file);
-        return file;
-      })
-      .onValue(file => this._emitChange(file));
+    let watch = this._getWatcherStream()
+      .flatMap(file => this._enrichChange(file));
+
+      watch.onValue(file => this._emitChange(file));
+      watch.onError(err => log.error(err));
+
+      return watch;
   }
 
   unwatch() {
@@ -100,8 +106,8 @@ export default class Watcher extends EventEmitter {
   _enrichChange(file) {
     log.trace('Processing change %s (%s) [%s]', file.path, file.action, file.id);
     return addToIndex(file, this.directory)
-      .flatMap(() => {
-        log.trace('Index updated for %s', file.path);
+      .flatMap((l) => {
+        log.debug('Index updated for %s', file.path, l);
 
         file.timestamp = new Date();
         return file;

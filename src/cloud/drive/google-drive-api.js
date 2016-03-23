@@ -182,6 +182,7 @@ export default class GoogleDriveApi extends StorageApi {
             array.push(element);
             return array;
           }).flatMap(array => {
+            log.debug(array);
             return {
               startPageToken: response.newStartPageToken,
               changes: array
