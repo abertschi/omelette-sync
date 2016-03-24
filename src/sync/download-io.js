@@ -1,11 +1,11 @@
 import mkdirp from 'mkdirp';
 import trash from 'trash';
 import fs from 'fs';
-let log = require('./debug.js')('fileworker');
-import getFileStats from './util/get-file-stats.js';
+let log = require('./../debug')('fileworker');
+import getFileStats from '../util/get-file-stats';
 import Bacon from 'baconjs';
 
-export default class FileWorker {
+export default class DownloadIO {
 
   constructor(options = {}) {
     this.downloadSuffix = options.downloadSuffix || '.syncdownload';
