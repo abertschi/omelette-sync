@@ -1,16 +1,21 @@
 # OmeletteSync
 
-OmeletteSync is a cloud storage sync tool with privacy concerns in mind.
+> Encryption to the rescue! Sync all your files with the cloud, save and sound.
+
+OmeletteSync is a file synchronization tools for cloud storage.
+It keeps track of all your files and synchronizes changes with the cloud. We give you back the control to decide whether and who do you want to share your personal files with. That's why OmeletteSync uses industrial encryption standards to encrypt your files during synchronization. Your password stays on your machine and never leaves it making you, and only, be able to read your files.
 
 ## Primary goals:
-- Synchronize files with cloud storage providers
-- Automatically detect file changes on your computer
-- Encrypt files before upload
-- Distribute files among multiple accounts
-- Run on OSX, Linux support is planned
 
-Supported cloud storage providers:
-- Google Drive
+- Automatically detect file changes
+- Synchronize files with cloud storage providers
+- Transparent encryption layer using Advanced Encryption Standard (AES)
+- Combine multiple accounts into a single logical unit for the purpose of storage expansion.
+- Support for OSX, Linux
+
+### Supported cloud storage providers
+As for the beginning, Google Drive is supported.
+However, support for multiple providers is part of the core design.
 
 ## Development notice
 
@@ -21,21 +26,18 @@ This application is in an early development stage and not yet ready for any use.
 - [x] Upload, Remove, Move files on Google Drive
 - [ ] Upload controller to distribute files among multiple providers/ accounts
 - [x] Encryption mechanism
-- [ ] Frontend to configure accounts and see sync status
-- [ ] Menubar application for OSX
-
-## Tasks
 - [ ] add binary version of fswatch for mac osx
 - [ ] test shellwatcher under linux
-- [ ] add cli
- - [ ] store google drive auth in database
- - [ ] add dialog to set mountdir, watchhome and other prefs in cli
+- [x] add cli
+ - [x] store google drive auth in database
+ - [x] add dialog to set mountdir, watchhome and other prefs in cli
  - [ ] add options to pull or push only
-- [ ] proper error and logging events
+- [x] proper error and logging events
 - [ ] add task to transform es6 code
 - [ ] googledriveapi: detect changes limited to mountdir
 - [ ] move files to trash rather than erase completely
-
+- [ ] Frontend to configure accounts and see sync status
+- [ ] Menubar application
 
 ## License
 This project is released under the GNU General Public License v3.
