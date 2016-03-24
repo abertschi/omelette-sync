@@ -4,7 +4,7 @@ import Bacon from 'baconjs';
 import Encryption from '../encryption.js';
 import fs from 'fs';
 import ChangeRunner from './change-runner.js';
-import FileWorker from '../file-worker.js';
+import DownloadIO from './download-io';
 import Settings from '../settings.js';
 import appEvents, {
   actions
@@ -42,7 +42,7 @@ export default class SyncManager extends EventEmitter {
       this.watchHome = options.watchHome;
     }
 
-    this._fileWorker = new FileWorker();
+    this._downloadIO = new DownloadIO();
     this._fetchInterval;
     this._providerMap = new Map();
 
@@ -277,7 +277,7 @@ export default class SyncManager extends EventEmitter {
     let location = this._prefixWithWatchHome(file.path);
 
     log.info('[Download] Adding directory %s', location);
-    return this._fileWorker.createDirectory(location);
+    return this._downloadIO.createDirectory(location);
   }
 
   _downloadMove(file) {
@@ -285,19 +285,19 @@ export default class SyncManager extends EventEmitter {
     let pathFrom = this._prefixWithWatchHome(file.pathOrigin);
 
     log.info('[Download] Moving %s to %s', pathFrom, pathTo);
-    return this._fileWorker.move(pathFrom, pathTo);
+    return this._downloadIO.move(pathFrom, pathTo);
   }
 
   _downloadRemove(file) {
     let location = this._prefixWithWatchHome(file.path);
 
     log.info('[Download] Removing %s', location);
-    return this._fileWorker.remove(location);
+    return this._downloadIO.remove(location);
   }
 
   _finishDownload(location, timestamp) {
     log.info(location, timestamp);
-    return this._fileWorker.markDownloadAsDone(location, timestamp);
+    return this._downloadIO.markDownloadAsDone(location, timestamp);
   }
 
   _fetchChanges() {
@@ -393,7 +393,7 @@ export default class SyncManager extends EventEmitter {
   }
 
   _createWriteStream(location, error) {
-    return Bacon.fromPromise(this._fileWorker.createDownloadStream(location, error))
+    return Bacon.fromPromise(this._downloadIO.createDownloadStream(location, error))
       .flatMap(download => {
         if (this.useEncryption) {
           let enc = this.encryption.decryptStream(download.stream, error);
