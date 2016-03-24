@@ -18,7 +18,7 @@ export default class CloudIndex {
           let json = JSON.stringify(merged);
 
           log.trace('updating payload from %s to %s: ', stored, merged);
-          return Bacon.fromNodeCallback(db, 'get', UPDATE, json, key, provider);
+          return Bacon.fromNodeCallback(db, 'get', UPDATE, json, provider, key);
         } else {
           log.trace('inserting payload %s: ', payload);
           let json = JSON.stringify(payload);

@@ -346,6 +346,7 @@ export default class SyncManager extends EventEmitter {
     let found = false;
     for (let i = 0; i < uploads.length; i++) {
       let element = uploads[i];
+      log.info('Filtering %s with entry in uploads %s', key, element.key);
       if (key == element.key) {
         found = true;
         break;

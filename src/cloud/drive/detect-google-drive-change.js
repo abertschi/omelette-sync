@@ -9,26 +9,29 @@ let log = require('../../debug.js')('gdrive');
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 
 export default function detectChange(file, providerId) {
+
+  _getFileNodes(providerId, file.id).onValue(v => log.info('stored path for %s %s %s', file.id, file.name, _nodesToPath(v)));
+
   return cloudIndex.get(providerId, file.id)
     .doAction(index => log.trace('Determing change type. CHANGE: %s \nINDEX: %s', file, index))
     .flatMap(index => {
+      let deleted = file.action == 'REMOVE';
 
-      if (file.action == 'REMOVE') return prepareRemoveType(providerId, file, index);
+      if (index && deleted) return prepareRemoveType(providerId, file, index);
       else {
-        if (!index) return prepareAddType(providerId, file);
-        else if (index.parentId != file.parentId) return prepareMoveType(providerId, file);
-        else if (index.name != file.name) return prepareRenameType(providerId, file);
-        else if (!_isDir(file.mimeType) && file.md5Checksum != index.md5Checksum) return prepareChangeType(providerId, file);
-        else {
-          log.debug('Ignoring change %s', file.id, file.name);
-          /*
-           * This change is not relevant because:
-           * - it was uploaded by this client or
-           * - the parent directory of this change is listed as a change.
-           */
-        }
+        if (!index && !deleted) return prepareAddType(providerId, file);
+        else if (index) {
+          if (index.parentId != file.parentId) return prepareMoveType(providerId, file);
+          else if (index.name != file.name) return prepareRenameType(providerId, file);
+          else if (!_isDir(file.mimeType) && file.md5Checksum != index.md5Checksum) return prepareChangeType(providerId, file);
+          else isNotRelevant(file, index);
+        } else isNotRelevant(file, index);
       }
     }).filter(set => set);
+}
+
+function isNotRelevant(file, index) {
+  log.debug('Ignoring change %s', file.id, file.path, file, index);
 }
 
 function prepareAddType(providerId, file) {

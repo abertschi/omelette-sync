@@ -22,6 +22,7 @@ export default class GoogleDrive {
     this.cloudIndex = new CloudIndex();
     this._cachedDriveId;
     this._drivePageToken;
+    this._drivePageTokenKey;
   }
 
   accountId() {
@@ -88,10 +89,7 @@ export default class GoogleDrive {
   }
 
   postRemove(file, response) {
-    // remove with pullchanges
-    // since all changes done by upload will be available in pullChanges
-    //return this._removeFromIndex(response.properties.id).toPromise();
-    return Promise.resolve();
+    return this._removeFromIndex(response.properties.id).toPromise();
   }
 
   createFolder(location) {
@@ -103,14 +101,10 @@ export default class GoogleDrive {
   }
 
   pullChanges() {
-    let pageTokenKey;
-    let pageToken;
+    return this._getPageTokenKey()
+      .flatMap(key => {
 
-    return Bacon.fromPromise(this._getPageTokenKey())
-      .flatMap(lastPageTokenKey => {
-        pageTokenKey = lastPageTokenKey;
-
-        return Bacon.fromPromise(Settings.get(lastPageTokenKey))
+        return this._getPageToken(key)
           .flatMap(lastPageToken => {
 
             return Bacon.fromPromise(this.drive.getUserId())
@@ -118,40 +112,39 @@ export default class GoogleDrive {
 
                 return Bacon.fromPromise(this.drive.listChanges(lastPageToken))
                   .flatMap(pull => {
-                    pageToken = pull.startPageToken;
-                    /*
-                     * changes.reverse()
-                     * do newest change last, important to handle new directories correctly
-                     */
-                    return Bacon.fromArray(pull.changes.reverse())
-                      .flatMap(change => {
-                        return detectGoogleDriveChange(change, providerId)
-                          //.filter(file => file.id && file.path && file.name)
-                          .flatMap(file => this._buildChange(change, file))
-                      })
-                      .flatMap(file => {
-                        if (file.action == 'REMOVE') {
-                          log.info('REMOVING %s from cloudindex', file.path);
-                          return this._removeFromIndex(file.id).flatMap(() => file);
-                        } else {
-                          return this._addToIndex(file.id, file.payload).flatMap(() => file);
-                        }
+
+                    return Bacon.once()
+                      .flatMap(() => {
+
+                        return Bacon.fromArray(pull.changes.reverse()) // reverse: oldest changes first
+                          .flatMap(change => {
+                            return detectGoogleDriveChange(change, providerId)
+                              .flatMap(file => this._buildChange(change, file))
+                              .flatMap(file => this._indexChange(file));
+                          })
+                          .fold([], this._fold)
+                          .doAction(() => this._storePageToken(key, pull.startPageToken));
                       });
                   });
               });
           });
-      })
-      .fold([], (changes, change) => {
-        changes.push(change);
-        return changes;
-      })
-      .flatMap(changes => {
-        return Bacon.fromPromise(Settings.set(pageTokenKey, pageToken))
-          .flatMap(() => changes);
-      })
-      .toPromise();
+      }).toPromise();
   }
 
+  _indexChange(file) {
+    if (file.action == 'REMOVE') {
+      log.info('REMOVING %s from cloudindex', file.path);
+
+      return this._removeFromIndex(file.id).flatMap(() => file);
+    } else {
+      return this._addToIndex(file.id, file.payload).flatMap(() => file);
+    }
+  }
+
+  _fold(array, element) {
+    array.push(element);
+    return array;
+  }
   _buildChange(response, file) {
     file.isDir = this._isDir(response.mimeType);
     file.timestamp = response.timestamp;
@@ -203,6 +196,14 @@ export default class GoogleDrive {
     return tree.child ? this._flattenTreeToArray(tree.child, tree.id, directories) : directories;
   }
 
+  _getPageToken(key) {
+    return Bacon.fromPromise(Settings.get(key));
+  }
+
+  _storePageToken(key, value) {
+    return Settings.set(key, value);
+  }
+
   _getPageTokenKey() {
     return Bacon.once(this._cachedDriveId)
       .flatMap(cachedId => {
@@ -215,6 +216,6 @@ export default class GoogleDrive {
         } else {
           return cachedId;
         }
-      }).toPromise();
+      });
   }
 }
