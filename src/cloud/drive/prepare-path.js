@@ -10,7 +10,6 @@ export default function preparePath(file, providerId) {
 
   return Bacon.once()
     .flatMap(() => {
-
       if (file.action == 'REMOVE') return prepareRemoveType(providerId, file);
       else if (file.action == 'MOVE') return prepareMoveType(providerId, file);
       else if (file.action == 'ADD') return prepareAddType(providerId, file);
@@ -19,6 +18,11 @@ export default function preparePath(file, providerId) {
         isNotRelevant(file, index);
       }
     }).filter(set => set);
+}
+
+export function getPathFromIndex(fileId, providerId) {
+  return _getFileNodes(providerId, fileId)
+    .flatMap(nodes => _nodesToPath(nodes));
 }
 
 function isNotRelevant(file, index) {
@@ -68,12 +72,6 @@ function prepareChangeType(providerId, file) {
     });
 }
 
-
-export function getPathFromIndex(fileId, providerId) {
-  return _getFileNodes(providerId, fileId)
-    .flatMap(nodes => _nodesToPath(nodes));
-}
-
 function _getFileNodes(providerId, fileId) {
   let walkToRoot = (fileId, parents = []) => {
     return cloudIndex.get(providerId, fileId)
@@ -83,6 +81,9 @@ function _getFileNodes(providerId, fileId) {
           parents.push(index.name);
           return walkToRoot(index.parentId, parents);
         } else {
+          if (!parents.length) {
+            return null;
+          }
           parents.pop();
           parents.reverse();
           log.debug('Composed index: %s', parents);

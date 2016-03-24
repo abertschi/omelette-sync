@@ -22,8 +22,6 @@ export default class GoogleDrive {
 
     this.cloudIndex = new CloudIndex();
     this._cachedDriveId;
-    this._drivePageToken;
-    this._drivePageTokenKey;
   }
 
   accountId() {
@@ -120,7 +118,7 @@ export default class GoogleDrive {
                         return Bacon.fromArray(pull.changes.reverse())
                           // reverse: do newest change last
                           .flatMap(change => {
-                            return detectAction(change, providerId)
+                            return detectAction(change, providerId, this.drive)
                               .flatMap(file => this._buildChange(change, file))
                               .flatMap(file => this._cachePathIfMoveType(file, providerId))
                           })
@@ -178,6 +176,7 @@ export default class GoogleDrive {
     array.push(element);
     return array;
   }
+
   _buildChange(response, file) {
     file.isDir = this._isDir(response.mimeType);
     file.timestamp = response.timestamp;
