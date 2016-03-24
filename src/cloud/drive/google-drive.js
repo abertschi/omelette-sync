@@ -4,7 +4,8 @@ import Bacon from 'baconjs';
 import GoogleDriveApi from './google-drive-api.js';
 import Settings from './../../settings.js';
 import CloudIndex from '../../index/cloud-index.js';
-import detectGoogleDriveChange from './detect-google-drive-change';
+import detectAction from './detect-google-drive-change';
+import preparePath, {getPathFromIndex} from './prepare-path.js';
 
 let log = require('../../debug.js')('gdrive');
 
@@ -116,12 +117,24 @@ export default class GoogleDrive {
                     return Bacon.once()
                       .flatMap(() => {
 
-                        return Bacon.fromArray(pull.changes.reverse()) // reverse: oldest changes first
+                        return Bacon.fromArray(pull.changes.reverse())
+                          // reverse: do newest change last
                           .flatMap(change => {
-                            return detectGoogleDriveChange(change, providerId)
+                            return detectAction(change, providerId)
                               .flatMap(file => this._buildChange(change, file))
-                              .flatMap(file => this._indexChange(file));
+                              .flatMap(file => this._cachePathIfMoveType(file, providerId))
                           })
+                          .fold([], this._fold)
+
+                          .flatMap(files => Bacon.fromArray(files))
+                          .flatMap(file => this._storeChangeIfNotRemoveType(file))
+                          .fold([], this._fold)
+
+                          .flatMap(files => Bacon.fromArray(files))
+                          // create path for changes after all changes are indexed.
+                          // necessary because fileId based architecture of gdrive.
+                          .flatMap(file => preparePath(file, providerId))
+                          .flatMap(file => this._removeChangeIfRemoveType(file))
                           .fold([], this._fold)
                           .doAction(() => this._storePageToken(key, pull.startPageToken));
                       });
@@ -131,13 +144,33 @@ export default class GoogleDrive {
       }).toPromise();
   }
 
-  _indexChange(file) {
-    if (file.action == 'REMOVE') {
-      log.info('REMOVING %s from cloudindex', file.path);
+  _storeChangeIfNotRemoveType(file) {
+    if (file.action != 'REMOVE') {
+      return this._addToIndex(file.id, file.payload).flatMap(() => file);
+    } else {
+      return file;
+    }
+  }
 
+  _removeChangeIfRemoveType(file) {
+    if (file.action == 'REMOVE') {
       return this._removeFromIndex(file.id).flatMap(() => file);
     } else {
-      return this._addToIndex(file.id, file.payload).flatMap(() => file);
+      return file;
+    }
+  }
+
+  _cachePathIfMoveType(file, providerId) {
+    if (file.action == 'MOVE') {
+      log.info('info about before move file: %s', file);
+      return getPathFromIndex(file.id, providerId)
+        .flatMap(pathOrigin => {
+          file.pathOrigin = pathOrigin;
+          log.info('cache pathOrigin for move %s', file.pathOrigin);
+          return file;
+        });
+    } else {
+      return file;
     }
   }
 

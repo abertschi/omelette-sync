@@ -153,6 +153,7 @@ export default class GoogleDriveApi extends StorageApi {
 
     return fetch(pageToken)
       .flatMap(response => {
+        log.debug('fetching from api %s', response);
         return Bacon.fromArray(response.changes)
           .filter(f => f.fileId)
           .flatMap(change => {
@@ -182,7 +183,7 @@ export default class GoogleDriveApi extends StorageApi {
             array.push(element);
             return array;
           }).flatMap(array => {
-            log.debug(array);
+            log.debug('returning from api %s', array);
             return {
               startPageToken: response.newStartPageToken,
               changes: array
