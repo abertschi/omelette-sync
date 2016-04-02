@@ -27,11 +27,11 @@ export default class Watcher extends EventEmitter {
 
   constructor(options = {}) {
     super();
-    if (!options.directory) {
+    if (!options.directories) {
       throw new Error('Directory not set');
     }
 
-    this.directory = this._parepareDirectory(options.directory);
+    this.directories = this._prepareDirectories(options.directories);
     this.type = options.type || os.type();
     this.watcher = null;
 
@@ -48,7 +48,7 @@ export default class Watcher extends EventEmitter {
     let index = clientIndex
       .emptyIndex()
       .flatMap(() => {
-        let stream = listRecursive(this.directory)
+        let stream = listRecursive(this.directories[0])
           .flatMap(file => {
             file.action = 'ADD';
             file.payload = file.payload ? file.payload : {};
@@ -63,13 +63,13 @@ export default class Watcher extends EventEmitter {
         return stream;
       })
       .flatMap(file => this._enrichChange(file));
-      index.onValue(file => this._emitChange(file));
-      index.onError(err => log.error(err));
+    index.onValue(file => this._emitChange(file));
+    index.onError(err => log.error(err));
   }
 
   getChangesSince(date) {
-    log.info(`Searching for changes since %s for %s`, date, this.directory);
-    let changes = listChanges(this.directory, date)
+    log.info(`Searching for changes since %s for %s`, date, this.directories[0]);
+    let changes = listChanges(this.directories[0], date)
       .flatMap(file => {
         log.debug('Detected offline change %s', file.path);
         let shell = prepareShellStream(file);
@@ -82,18 +82,18 @@ export default class Watcher extends EventEmitter {
       })
       .flatMap(file => this._enrichChange(file));
 
-      changes.onValue(file => this._emitChange(file));
-      changes.onError(err => log.error(err));
+    changes.onValue(file => this._emitChange(file));
+    changes.onError(err => log.error(err));
   }
 
   watch() {
     let watch = this._getWatcherStream()
       .flatMap(file => this._enrichChange(file));
 
-      watch.onValue(file => this._emitChange(file));
-      watch.onError(err => log.error(err));
+    watch.onValue(file => this._emitChange(file));
+    watch.onError(err => log.error(err));
 
-      return watch;
+    return watch;
   }
 
   unwatch() {
@@ -105,7 +105,7 @@ export default class Watcher extends EventEmitter {
 
   _enrichChange(file) {
     log.trace('Processing change %s (%s) [%s]', file.path, file.action, file.id);
-    return addToIndex(file, this.directory)
+    return addToIndex(file, this.directories[0])
       .flatMap((l) => {
         log.debug('Index updated for %s', file.path, l);
 
@@ -138,7 +138,7 @@ export default class Watcher extends EventEmitter {
       log.debug('Using FsWatchWatcherOsx to observe directory changes');
 
       this.watcher = new FsWatchWatcherOsx({
-        directory: this.directory
+        directories: this.directories
       });
 
       return this.watcher.watch().flatMap(file => {
@@ -147,7 +147,13 @@ export default class Watcher extends EventEmitter {
     }
   }
 
-  _parepareDirectory(dir) {
+  _prepareDirectories(dirs) {
+    let prepared = [];
+    dirs.forEach(d => prepared.push(this._prepareDirectory(d)));
+    return prepared;
+  }
+
+  _prepareDirectory(dir) {
     return dir.endsWith('/') ? dir.substring(0, dir.length - 1) : dir;
   }
 }

@@ -1,21 +1,19 @@
 # OmeletteSync
 
-> Encryption to the rescue! Sync all your files with the cloud, save and sound.
+OmeletteSync is a file synchronization tools for cloud storage.  
+It keeps track of all your files, synchronizes changes with the cloud
+and uses industrial encryption standards to encrypt your files during synchronization.
 
-OmeletteSync is a file synchronization tools for cloud storage.
-It keeps track of all your files and synchronizes changes with the cloud. We give you back the control to decide whether and who do you want to share your personal files with. That's why OmeletteSync uses industrial encryption standards to encrypt files during synchronization. Your password stays on your machine and never leaves it, making you only be able to read your files.
-
-## Primary goals:
+## Core features
 
 - Automatically detect file changes
 - Synchronize files with cloud storage providers
-- Transparent encryption layer using Advanced Encryption Standard (AES)
-- Combine multiple accounts into a single logical unit for the purpose of storage expansion.
-- Support for OSX, Linux
+- Transparent encryption layer
+- Combine multiple accounts into a single logical unit for the purpose of storage expansion
+- Support for Mac OS X and Linux
 
-### Supported cloud storage providers
+## Supported storage providers
 As for the beginning, Google Drive is supported.
-However, support for multiple providers is part of the core design.
 
 ## Development notice
 

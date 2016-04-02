@@ -12,10 +12,10 @@ var path = require('path');
 export default class FsWatchWatcherOsx {
 
   constructor(options = {}) {
-    if (!options.directory) {
+    if (!options.directories) {
       throw new Error('Directory not specified');
     }
-    this.directory = options.directory;
+    this.directories = options.directories;
     this.watchSpawn = null;
     this._username = null;
   }
@@ -40,8 +40,8 @@ export default class FsWatchWatcherOsx {
   }
 
   _processOutput(cmd) {
-    let results = Bacon
-      .fromEvent(cmd.stdout, 'data')
+    let results =
+      Bacon.fromEvent(cmd.stdout, 'data')
       .map(raw => String(raw))
       .flatMap(founds => Bacon.fromArray(founds.split('\n')))
       .filter(f => f.trim() != '')
@@ -50,9 +50,11 @@ export default class FsWatchWatcherOsx {
         const PATH_SEPARATOR = output.lastIndexOf(' ');
         let path = output.substring(0, PATH_SEPARATOR);
         let flags = [];
+
         output.substring(PATH_SEPARATOR).split('#').forEach(f => {
           flags.push(f.trim());
         });
+
         let isDir = flags.indexOf('IsDir') > -1;
         let file = {
           isDir: isDir,
@@ -69,17 +71,22 @@ export default class FsWatchWatcherOsx {
       });
 
     let moveStream = this._createMoveStream(createBufferdStream(results, 2));
-    results = results
-      .filter(f => f.action != 'MOVE')
-      .filter(f => this._isInDirectory(f.path))
-      .doAction(f => log.info('fswatch: %s', f));
+    results =
+      results.filter(f => f.action != 'MOVE')
+      .filter(f => this._isInDirectory(f.path));
 
     let errors = Bacon
       .fromEvent(cmd.stderr, 'data')
       .map(raw => new Bacon.Error(String(raw)))
       .doAction(f => log.error(f));
 
-    return results.merge(moveStream).merge(errors);
+    return results.merge(moveStream)
+      .flatMap(change => {
+        change.homeDir = this._getHomeDirectory(change.path);
+        return change;
+      })
+      .merge(errors)
+      .doAction(f => log.info('Found Change: %s', f));
   }
 
   _createMoveStream(stream) {
@@ -122,18 +129,23 @@ export default class FsWatchWatcherOsx {
       }).filter(f => f != undefined);
   }
 
+  _isInDirectory(dir) {
+    return this._getHomeDirectory(dir) != null;
+  }
+
+  _getHomeDirectory(dir) {
+    let found;
+    for (let i = 0; i < this.directories.length; i++) {
+      if (dir.startsWith(this.directories[i])) {
+        found = this.directories[i];
+        break;
+      }
+    }
+    return found;
+  }
+
   _isTrash(location) {
     const TRASH = `/Users/${this._username}/.Trash`;
     return location.indexOf(TRASH) > -1 ? true : false;
-  }
-
-  _isInDirectory(location) {
-    return (location.indexOf(this.directory) > -1);
-  }
-
-  _isRelevant(raw) {
-    if (this._isInDirectory(raw)) return true;
-    else if (this._isTrash(raw)) return true;
-    else return false;
   }
 }

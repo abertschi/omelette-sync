@@ -13,7 +13,7 @@ export default function detectChange(file, providerId, drive) {
 
   return isWithinSyncRoot(providerId, file.parentId, drive)
     .flatMap(withinSyncRoot => {
-      if (withinSyncRoot) {
+      if (withinSyncRoot || deleted) {
 
         return cloudIndex.get(providerId, file.id)
           .flatMap(index => {

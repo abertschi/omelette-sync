@@ -42,7 +42,7 @@ export default function startWatching(auth, watchHome, mountDir) {
       manager.startWatching();
 
       watcher = new Watcher({
-        directory: watchHome,
+        directories: [watchHome],
         since: lastrun,
         init: init
       });
