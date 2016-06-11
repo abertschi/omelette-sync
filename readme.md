@@ -1,6 +1,6 @@
 # OmeletteSync
 
-OmeletteSync is a file synchronization tools for cloud storage.  
+OmeletteSync is a file synchronization tool for cloud storage.  
 It keeps track of all your files, synchronizes changes with the cloud
 and uses industrial encryption standards to encrypt your files during synchronization.
 
