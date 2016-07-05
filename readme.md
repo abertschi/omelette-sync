@@ -1,3 +1,5 @@
+_Ahoy! This project is in early development and not yet ready for any use_ :soon::clock1::arrows_counterclockwise:
+
 # OmeletteSync
 
 OmeletteSync is a file synchronization tool for cloud storage.  
