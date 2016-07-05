@@ -2,6 +2,9 @@ _Ahoy! This project is in early development and not yet ready for any use_ :soon
 
 # OmeletteSync
 
+
+![OmeletteSync](http://vignette4.wikia.nocookie.net/guilds/images/2/27/Omelette.gif)
+
 OmeletteSync is a file synchronization tool for cloud storage.  
 It keeps track of all your files, synchronizes changes with the cloud
 and uses industrial encryption standards to encrypt your files during synchronization.
